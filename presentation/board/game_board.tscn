@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://presentation/board/game_board.gd" id="1_board"]
+[ext_resource type="Script" path="res://presentation/board/hex_tile_map.gd" id="2_tilemap"]
+
+[node name="GameBoard" type="Node2D"]
+script = ExtResource("1_board")
+
+[node name="HexTileMap" type="TileMapLayer" parent="."]
+script = ExtResource("2_tilemap")
