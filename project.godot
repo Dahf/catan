@@ -23,11 +23,6 @@ ContentDB="*res://autoload/content_db.gd"
 GameState="*res://autoload/game_state.gd"
 SaveManager="*res://autoload/save_manager.gd"
 
-[display]
-
-window/size/viewport_width=1152
-window/size/viewport_height=648
-
 [physics]
 
 3d/physics_engine="Jolt Physics"

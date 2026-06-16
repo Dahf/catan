@@ -5,25 +5,44 @@ extends RefCounted
 ## Vertices/Kanten für das Hybrid-Modell (Siedlungen auf Ecken, Straßen auf Kanten).
 
 # Die 6 Nachbar-Richtungen in axialen Koordinaten (selbst zu befüllen)
-const DIRECTIONS: Array[Vector2i] = []
+const DIRECTIONS: Array[Vector2i] = [
+	Vector2i(1,0), #East
+	Vector2i(0,1), #SouthEast
+	Vector2i(-1,1), #SouthWest
+	Vector2i(-1,0), #West
+	Vector2i(-1,-1), #NorthWest
+	Vector2i(0,-1) #NorthEast
+]
 
 
 ## Liefert die (bis zu 6) Nachbar-Tiles einer Koordinate.
 func get_neighbors(coord: Vector2i) -> Array[Vector2i]:
 	# TODO
-	return []
+	var result: Array[Vector2i] = []
+	for i in DIRECTIONS:
+		result.append(coord + i)
+	return result
 
 
 ## Hex-Distanz zwischen zwei Tiles.
 func distance(a: Vector2i, b: Vector2i) -> int:
 	# TODO
-	return 0
+	var dq := a.x-b.x
+	var dr := a.y-b.y
+	return (abs(dq)+abs(dq+dr)+abs(dr))/2
 
 
 ## Alle Tiles innerhalb eines Radius um ein Zentrum.
 func get_range(center: Vector2i, radius: int) -> Array[Vector2i]:
 	# TODO
-	return []
+	var result : Array[Vector2i] = []
+	for i in range(-radius, radius + 1):
+		for j in range(-radius, radius + 1):
+			var scan : Vector2i = Vector2i(i, j)
+			if distance(center, scan) <= radius:
+				result.append(scan)
+	
+	return result
 
 
 ## Tiles auf einer geraden Linie zwischen a und b.
