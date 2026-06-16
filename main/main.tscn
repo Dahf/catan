@@ -1,18 +1,22 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene format=3 uid="uid://o56xegrxc8fa"]
 
-[ext_resource type="Script" path="res://main/main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://dk8y2s885x4qq" path="res://main/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://presentation/board/game_board.tscn" id="2_board"]
 [ext_resource type="PackedScene" path="res://presentation/ui/hud.tscn" id="3_hud"]
 [ext_resource type="PackedScene" path="res://presentation/ui/build_menu.tscn" id="4_buildmenu"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=962056230]
 script = ExtResource("1_main")
 
-[node name="GameBoard" parent="." instance=ExtResource("2_board")]
+[node name="GameBoard" parent="." unique_id=310315076 instance=ExtResource("2_board")]
 position = Vector2(576, 324)
 
-[node name="UILayer" type="CanvasLayer" parent="."]
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=337674466]
 
-[node name="HUD" parent="UILayer" instance=ExtResource("3_hud")]
+[node name="HUD" parent="UILayer" unique_id=217223849 instance=ExtResource("3_hud")]
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="BuildMenu" parent="UILayer" instance=ExtResource("4_buildmenu")]
+[node name="BuildMenu" parent="UILayer" unique_id=376913716 instance=ExtResource("4_buildmenu")]
+grow_horizontal = 2
+grow_vertical = 2
