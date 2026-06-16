@@ -12,54 +12,26 @@ extends RefCounted
 ##
 ## Orientierung: "pointy-top" Sechsecke. Richtungen im Uhrzeigersinn ab Osten.
 
-# Die 6 Nachbar-Richtungen in AXIALEN Koordinaten (E, SE, SW, W, NW, NE)
-const DIRECTIONS: Array[Vector2i] = [
-	Vector2i(1, 0),   # E
-	Vector2i(0, 1),   # SE
-	Vector2i(-1, 1),  # SW
-	Vector2i(-1, 0),  # W
-	Vector2i(0, -1),  # NW
-	Vector2i(1, -1),  # NE
-]
+# Die 6 Nachbar-Richtungen in axialen Koordinaten (selbst zu befüllen)
+const DIRECTIONS: Array[Vector2i] = []
 
-# Dieselben Richtungen in CUBE-Koordinaten (für Vertex-/Kanten-Mathematik)
-# Reihenfolge muss INDEX-GLEICH zu DIRECTIONS sein.
-const CUBE_DIRECTIONS: Array[Vector3i] = [
-	Vector3i(1, -1, 0),   # E
-	Vector3i(0, -1, 1),   # SE
-	Vector3i(-1, 0, 1),   # SW
-	Vector3i(-1, 1, 0),   # W
-	Vector3i(0, 1, -1),   # NW
-	Vector3i(1, 0, -1),   # NE
-]
-
-
-# --- Tile-Funktionen (axial) ---------------------------------------------------
 
 ## Liefert die (bis zu 6) Nachbar-Tiles einer Koordinate.
 func get_neighbors(coord: Vector2i) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	for dir in DIRECTIONS:
-		result.append(coord + dir)
-	return result
+	# TODO
+	return []
 
 
 ## Hex-Distanz zwischen zwei Tiles (Anzahl Schritte).
 func distance(a: Vector2i, b: Vector2i) -> int:
-	var dq := a.x - b.x
-	var dr := a.y - b.y
-	return (abs(dq) + abs(dq + dr) + abs(dr)) / 2
+	# TODO
+	return 0
 
 
 ## Alle Tiles innerhalb eines Radius um ein Zentrum (inklusive Zentrum).
 func get_range(center: Vector2i, radius: int) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	for dq in range(-radius, radius + 1):
-		var r_min := maxi(-radius, -dq - radius)
-		var r_max := mini(radius, -dq + radius)
-		for dr in range(r_min, r_max + 1):
-			result.append(center + Vector2i(dq, dr))
-	return result
+	# TODO
+	return []
 
 
 ## Tiles auf einer geraden Linie zwischen a und b (inklusive beider Enden).
