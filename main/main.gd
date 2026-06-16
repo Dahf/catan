@@ -1,12 +1,12 @@
 extends Node2D
 ## Einstiegspunkt des Spiels. Verdrahtet Board + UI und steuert den Spielzug-Loop.
-var hex := HexGrid.new()
+var proc := ProcGen.new()
 
 func _ready() -> void:
 	# TODO: Run starten, UI/Board initialisieren
-	var range:= hex.get_range(Vector2i(0,0), 1)
-	print(range)
-	pass
+	proc.generate_stage(1)
+	for i in GameState.tiles.keys():
+		print(GameState.tiles[i].terrain, "   ", GameState.tiles[i].number_token)
 
 
 ## Startet einen neuen Run (Seed wählen, ProcGen, Board aufbauen).
