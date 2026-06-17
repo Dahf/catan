@@ -16,38 +16,46 @@ var relics: Array[Relic] = []
 
 ## Startet einen neuen Run mit gegebenem Seed (setzt Zustand zurück).
 func new_run(seed: int) -> void:
-	# TODO
-	pass
+	reset()
+	self.seed = seed
+	
 
 
 ## Setzt den gesamten Run-Zustand zurück.
 func reset() -> void:
-	# TODO
-	pass
+	tiles.clear()
+	settlements.clear()
+	storage.clear()
+	population = 0
+	pop_tier = 1
+	power_available = 0
+	stage = 1
+	turn = 0
+	relics.clear()
 
 
 ## Liefert das Tile an einer Koordinate (oder null).
 func get_tile(coord: Vector2i) -> Tile:
-	# TODO
-	return null
+	return tiles.get(coord)
 
 
 ## Prüft, ob die Kosten aus dem Lager bezahlt werden können.
 func can_afford(cost: Dictionary) -> bool:
-	# TODO
-	return false
+	for item in cost:
+		if storage.get(item, 0) < cost[item]:
+			return false
+	return true
 
 
 ## Zieht die Kosten vom Lager ab.
 func spend(cost: Dictionary) -> void:
-	# TODO
-	pass
+	for item in cost:
+		storage[item] = storage.get(item, 0) - cost[item]
 
 
 ## Fügt eine Ressourcenmenge dem Lager hinzu.
 func add_resource(id: StringName, amount: int) -> void:
-	# TODO
-	pass
+	storage[id] = storage.get(id, 0) + amount
 
 
 ## Platziert ein Gebäude auf einer Tile-Koordinate.
@@ -58,5 +66,5 @@ func place_building(coord: Vector2i, def: BuildingDef) -> void:
 
 ## Schaltet zur nächsten Runde weiter.
 func advance_turn() -> void:
-	# TODO
-	pass
+	turn += 1
+	EventBus.turn_advanced.emit(turn)
