@@ -8,3 +8,5 @@ script = ExtResource("1_board")
 
 [node name="HexTileMap" type="TileMapLayer" parent="." unique_id=38674485]
 script = ExtResource("2_tilemap")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=202300153]
