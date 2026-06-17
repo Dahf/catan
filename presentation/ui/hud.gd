@@ -3,6 +3,7 @@ extends Control
 
 var _box: VBoxContainer
 var _dice_label: Label
+
 var _resource_labels: Dictionary = {}   # StringName -> Label
 
 func _ready() -> void:

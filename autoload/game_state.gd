@@ -51,11 +51,13 @@ func can_afford(cost: Dictionary) -> bool:
 func spend(cost: Dictionary) -> void:
 	for item in cost:
 		storage[item] = storage.get(item, 0) - cost[item]
+		EventBus.resource_changed.emit(item, storage[item])
 
 
 ## Fügt eine Ressourcenmenge dem Lager hinzu.
 func add_resource(id: StringName, amount: int) -> void:
 	storage[id] = storage.get(id, 0) + amount
+	EventBus.resource_changed.emit(id, storage[id])
 
 
 ## Platziert ein Gebäude auf einer Tile-Koordinate.
