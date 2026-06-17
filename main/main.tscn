@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://o56xegrxc8fa"]
 
 [ext_resource type="Script" uid="uid://dk8y2s885x4qq" path="res://main/main.gd" id="1_main"]
-[ext_resource type="PackedScene" path="res://presentation/board/game_board.tscn" id="2_board"]
+[ext_resource type="PackedScene" uid="uid://nb5n065t3tdg" path="res://presentation/board/game_board.tscn" id="2_board"]
 [ext_resource type="PackedScene" path="res://presentation/ui/hud.tscn" id="3_hud"]
 [ext_resource type="PackedScene" path="res://presentation/ui/build_menu.tscn" id="4_buildmenu"]
 

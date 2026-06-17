@@ -5,8 +5,7 @@ var proc := ProcGen.new()
 func _ready() -> void:
 	# TODO: Run starten, UI/Board initialisieren
 	proc.generate_stage(1)
-	for i in GameState.tiles.keys():
-		print(GameState.tiles[i].terrain, "   ", GameState.tiles[i].number_token)
+	$GameBoard.build_from_state()
 
 
 ## Startet einen neuen Run (Seed wählen, ProcGen, Board aufbauen).

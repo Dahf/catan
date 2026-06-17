@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://nb5n065t3tdg"]
 
-[ext_resource type="Script" path="res://presentation/board/game_board.gd" id="1_board"]
-[ext_resource type="Script" path="res://presentation/board/hex_tile_map.gd" id="2_tilemap"]
+[ext_resource type="Script" uid="uid://cqhgmw0o6h77m" path="res://presentation/board/game_board.gd" id="1_board"]
+[ext_resource type="Script" uid="uid://ci23knm0nu6wo" path="res://presentation/board/hex_tile_map.gd" id="2_tilemap"]
 
-[node name="GameBoard" type="Node2D"]
+[node name="GameBoard" type="Node2D" unique_id=1075373092]
 script = ExtResource("1_board")
 
-[node name="HexTileMap" type="TileMapLayer" parent="."]
+[node name="HexTileMap" type="TileMapLayer" parent="." unique_id=38674485]
 script = ExtResource("2_tilemap")
