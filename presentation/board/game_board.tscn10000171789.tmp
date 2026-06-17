@@ -3,8 +3,8 @@
 [ext_resource type="Script" uid="uid://cqhgmw0o6h77m" path="res://presentation/board/game_board.gd" id="1_board"]
 [ext_resource type="Script" uid="uid://ci23knm0nu6wo" path="res://presentation/board/hex_tile_map.gd" id="2_tilemap"]
 
-[node name="GameBoard" type="Node2D" unique_id=1204927736]
+[node name="GameBoard" type="Node2D" unique_id=1549464981]
 script = ExtResource("1_board")
 
-[node name="HexTileMap" type="TileMapLayer" parent="." unique_id=736343372]
+[node name="HexTileMap" type="TileMapLayer" parent="." unique_id=1641524246]
 script = ExtResource("2_tilemap")

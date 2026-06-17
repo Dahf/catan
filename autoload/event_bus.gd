@@ -2,6 +2,7 @@ extends Node
 ## Globaler Signal-Hub zur Entkopplung von Core und Presentation.
 ## Autoload-Name: EventBus. Nur Signal-Deklarationen, keine Logik.
 
+signal tile_clicked(coord: Vector2i)
 signal building_placed(coord: Vector2i, def: BuildingDef)
 signal building_removed(coord: Vector2i)
 signal resource_changed(id: StringName, amount: int)
