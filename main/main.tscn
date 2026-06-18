@@ -5,11 +5,10 @@
 [ext_resource type="PackedScene" path="res://presentation/ui/hud.tscn" id="3_hud"]
 [ext_resource type="PackedScene" path="res://presentation/ui/build_menu.tscn" id="4_buildmenu"]
 
-[node name="Main" type="Node2D" unique_id=962056230]
+[node name="Main" type="Node3D" unique_id=962056230]
 script = ExtResource("1_main")
 
 [node name="GameBoard" parent="." unique_id=310315076 instance=ExtResource("2_board")]
-position = Vector2(576, 324)
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=337674466]
 

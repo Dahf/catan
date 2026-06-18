@@ -1,4 +1,4 @@
-extends Node2D
+extends Node3D
 ## Einstiegspunkt des Spiels. Verdrahtet Board + UI und steuert den Spielzug-Loop.
 var proc := ProcGen.new()
 var production := ProductionSystem.new() 

@@ -1,12 +1,20 @@
 [gd_scene format=3 uid="uid://nb5n065t3tdg"]
 
 [ext_resource type="Script" uid="uid://cqhgmw0o6h77m" path="res://presentation/board/game_board.gd" id="1_board"]
-[ext_resource type="Script" uid="uid://ci23knm0nu6wo" path="res://presentation/board/hex_tile_map.gd" id="2_tilemap"]
+[ext_resource type="Script" uid="uid://dso5bw83lp0m2" path="res://presentation/board/hex_board_3d.gd" id="2_hex"]
+[ext_resource type="PackedScene" uid="uid://bqg74j0bvbcwb" path="res://presentation/player/player.tscn" id="3_player"]
 
-[node name="GameBoard" type="Node2D" unique_id=1075373092]
+[node name="GameBoard" type="Node3D" unique_id=11836353]
 script = ExtResource("1_board")
 
-[node name="HexTileMap" type="TileMapLayer" parent="." unique_id=38674485]
-script = ExtResource("2_tilemap")
+[node name="HexBoard" type="Node3D" parent="." unique_id=1387441399]
+script = ExtResource("2_hex")
 
-[node name="Camera2D" type="Camera2D" parent="." unique_id=202300153]
+[node name="Camera3D" type="Camera3D" parent="." unique_id=625109418]
+projection = 1
+size = 16.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1897715574]
+shadow_enabled = true
+
+[node name="Player" parent="." unique_id=2138657859 instance=ExtResource("3_player")]
