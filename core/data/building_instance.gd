@@ -10,5 +10,6 @@ var active: bool = true           # genug Energie/Input vorhanden?
 
 ## Gibt true zurück, wenn das Gebäude diesen Zyklus produzieren kann.
 func can_produce() -> bool:
-	# TODO: Inputs im Lager + Energie prüfen
-	return false
+	if def == null or def.recipe == null:
+		return false
+	return GameState.can_afford(def.recipe.inputs)

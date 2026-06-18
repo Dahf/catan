@@ -27,10 +27,6 @@ SaveManager="*res://autoload/save_manager.gd"
 
 enabled=PackedStringArray("res://addons/gut/plugin.cfg")
 
-[debug]
-
-gdscript/warnings/exclude_addons=true
-
 [physics]
 
 3d/physics_engine="Jolt Physics"

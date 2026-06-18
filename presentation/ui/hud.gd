@@ -3,6 +3,7 @@ extends Control
 
 var _box: VBoxContainer
 var _dice_label: Label
+var _build_label: Label
 
 var _resource_labels: Dictionary = {}   # StringName -> Label
 
@@ -20,10 +21,22 @@ func _ready() -> void:
 	_dice_label = Label.new()
 	_dice_label.text = "Würfel: – (Leertaste)"
 	_box.add_child(_dice_label)
+	
+	_build_label = Label.new()
+	_build_label.text = "törken"
+	_box.add_child(_build_label)
 
 	EventBus.dice_rolled.connect(_on_dice_rolled)
 	EventBus.resource_changed.connect(_on_resource_changed)
-
+	EventBus.building_placed.connect(_on_built)
+	EventBus.settlement_placed.connect(_on_built)
+	EventBus.build_mode_requested.connect(_on_build_mode_requested)
+	
+func _on_build_mode_requested(def: BuildingDef) -> void:
+	_build_label.text = "Baumodus%s" % def.display_name
+	
+func _on_built(_a = null, _b = null) -> void:
+	_build_label.text = ""
 
 func _on_dice_rolled(value: int) -> void:
 	_dice_label.text = "Würfel: %d" % value

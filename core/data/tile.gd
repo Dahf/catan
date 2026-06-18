@@ -10,11 +10,9 @@ var building: BuildingInstance = null
 
 ## Gibt true zurück, wenn auf diesem Tile ein Gebäude steht.
 func has_building() -> bool:
-	# TODO
-	return false
+	return building != null
 
 
 ## Gibt true zurück, wenn dies ein Wasserfeld ist (unbebaubar).
 func is_water() -> bool:
-	# TODO
-	return false
+	return terrain == Terrain.TerrainType.WATER

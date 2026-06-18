@@ -6,7 +6,7 @@ var _row: HBoxContainer
 
 func _ready() -> void:
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(panel)
 	_row = HBoxContainer.new()
 	panel.add_child(_row)

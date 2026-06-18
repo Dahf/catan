@@ -28,7 +28,7 @@ func hex_to_map(coord: Vector2i) -> Vector2i:
 ## TileMap-Zelle -> axiale Hex-Koordinate.
 func map_to_hex(cell: Vector2i) -> Vector2i:
 	var q := cell.x - (cell.y - (cell.y & 1)) / 2
-	return Vector2i.ZERO
+	return Vector2i(q, cell.y)
 
 
 ## Axiale Hex-Koordinate -> Welt-Pixelposition (Mittelpunkt).

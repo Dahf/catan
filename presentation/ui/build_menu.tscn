@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://86s37c1v6cqj"]
 
-[ext_resource type="Script" path="res://presentation/ui/build_menu.gd" id="1_buildmenu"]
+[ext_resource type="Script" uid="uid://cgua34y5l2rwt" path="res://presentation/ui/build_menu.gd" id="1_buildmenu"]
 
-[node name="BuildMenu" type="Control"]
+[node name="BuildMenu" type="Control" unique_id=1766743108]
 layout_mode = 3
 anchors_preset = 12
 anchor_top = 1.0

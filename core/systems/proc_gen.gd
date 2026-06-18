@@ -1,7 +1,7 @@
 class_name ProcGen
 extends RefCounted
 var hex := HexGrid.new()
-var baserad := 5
+var baserad := 4
 var radius := baserad
 
 ## Seed-basierte prozedurale Generierung einer Stage/Region.

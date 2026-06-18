@@ -3,8 +3,10 @@ extends Node2D
 var proc := ProcGen.new()
 var production := ProductionSystem.new() 
 
+var test := Test.new()
 
 func _ready() -> void:
+	test.test_truth()
 	start_run()
 
 

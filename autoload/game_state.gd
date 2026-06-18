@@ -1,6 +1,7 @@
 extends Node
 ## Aktueller Run-Zustand (Daten-Kern). Autoload-Name: GameState.
 ## Hält alle Spieldaten; die Systeme operieren auf diesem Zustand.
+var _hex = HexGrid.new()
 
 var seed: int = 0
 var tiles: Dictionary = {}            # Vector2i -> Tile
@@ -61,9 +62,33 @@ func add_resource(id: StringName, amount: int) -> void:
 
 
 ## Platziert ein Gebäude auf einer Tile-Koordinate.
-func place_building(coord: Vector2i, def: BuildingDef) -> void:
-	# TODO
-	pass
+func place_building(coord: Vector2i, def: BuildingDef) -> bool:
+	var tile : Tile = tiles.get(coord)
+	if tile == null or tile.is_water() or tile.has_building():
+		return false
+	if not def.valid_terrain.is_empty() and not def.valid_terrain.has(tile.terrain):
+		return false
+	if not can_afford(def.build_cost):
+		return false
+	var inst := BuildingInstance.new()
+	inst.def = def
+	inst.coord = coord
+	tile.building = inst
+	spend(def.build_cost)
+	EventBus.building_placed.emit(coord, def)
+	return true
+	
+func place_settlement(vertex: Vector3i, def: BuildingDef) -> bool:
+	if settlements.has(vertex):
+		return false
+	if not can_afford(def.build_cost):
+		return false
+	spend(def.build_cost)
+	var s := Settlement.new()
+	s.vertex = vertex
+	settlements[vertex] = s
+	EventBus.settlement_placed.emit(vertex, def)
+	return true
 
 
 ## Schaltet zur nächsten Runde weiter.
