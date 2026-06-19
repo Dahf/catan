@@ -6,4 +6,4 @@ extends Resource
 @export var id: StringName
 @export var inputs: Dictionary   # StringName(resource) -> int (pro Zyklus verbraucht)
 @export var outputs: Dictionary  # StringName(resource) -> int (pro Zyklus erzeugt)
-@export var ticks_per_cycle: int = 1
+@export var turns_per_cycle: int = 1   # Anzahl Spielzüge bis ein Zyklus fertig ist

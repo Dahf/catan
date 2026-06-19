@@ -6,12 +6,17 @@ extends CharacterBody3D
 @export var speed := 6.0
 @export var gravity := 20.0
 @export var turn_speed := 0.2   # Glättung der Blickrichtung (0..1)
+@export var step_height := 0.4   # max. Kantenhöhe, die ohne Rampe automatisch "hochgestiegen" wird
 
 ## Optionales Character-Modell (.glb -> als PackedScene hier zuweisen).
 ## Ist es gesetzt, wird die Platzhalter-Kapsel ausgeblendet und das Modell
 ## in den "Model"-Slot instanziiert. Modell sollte mit Füßen auf y = 0 stehen
 ## und nach +Z blicken (Vorderseite), passend zur Lauf-Drehung.
 @export var character_model: PackedScene
+
+
+## Slot für das aktuell getragene Bauteil-Visual (von game_board.gd befüllt).
+@onready var carry_slot: Node3D = $Model/CarrySlot
 
 
 func _ready() -> void:
@@ -21,9 +26,14 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if GameState.is_input_blocked():
+		return   # Bewegung pausiert, solange ein Phasen-Overlay geöffnet ist
+
 	var input_x := Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
 	var input_z := Input.get_action_strength("move_forward") - Input.get_action_strength("move_back")
 	var dir := _camera_relative_dir(input_x, input_z)
+
+	_step_up(Vector3(dir.x, 0.0, dir.z) * speed * delta)
 
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
@@ -38,6 +48,21 @@ func _physics_process(delta: float) -> void:
 	if dir.length() > 0.01:
 		var target := atan2(dir.x, dir.z)
 		rotation.y = lerp_angle(rotation.y, target, turn_speed)
+
+
+## Erlaubt das Hochsteigen kleiner Kanten (z.B. Tisch -> Hex-Plattform) ohne
+## Rampe: Ist die horizontale Bewegung blockiert, aber nach Anheben um
+## step_height frei, wird der Character direkt angehoben (move_and_slide
+## zieht ihn danach per Bodenerkennung wieder auf die neue Oberfläche).
+func _step_up(horizontal_motion: Vector3) -> void:
+	if horizontal_motion.length() < 0.001:
+		return
+	if not test_move(global_transform, horizontal_motion):
+		return   # nicht blockiert, kein Hochsteigen nötig
+	var lifted := global_transform
+	lifted.origin.y += step_height
+	if not test_move(lifted, horizontal_motion):
+		global_position.y += step_height
 
 
 ## Wandelt die Eingabe in eine bildschirm-/kamera-relative Bewegungsrichtung (XZ) um.

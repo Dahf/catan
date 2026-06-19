@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" uid="uid://dmpqaw1cyeyu0" path="res://core/data/building_def.gd" id="1_def"]
+[ext_resource type="Resource" path="res://content/recipes/sawmill_recipe.tres" id="2_recipe"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"sawmill"
+display_name = "Sägewerk"
+category = 1
+build_cost = {
+&"wood": 4,
+&"brick": 1
+}
+recipe = ExtResource("2_recipe")

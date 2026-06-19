@@ -1,18 +1,14 @@
 [gd_resource type="Resource" script_class="BuildingDef" format=3 uid="uid://cipnc5swl5a3j"]
 
-[ext_resource type="Script" uid="uid://pn001o1qq6wu" path="res://core/data/recipe.gd" id="1_3ffov"]
 [ext_resource type="Script" uid="uid://dmpqaw1cyeyu0" path="res://core/data/building_def.gd" id="1_37vvf"]
-
-[sub_resource type="Resource" id="Resource_3f70t"]
-script = ExtResource("1_3ffov")
-metadata/_custom_type_script = "uid://pn001o1qq6wu"
+[ext_resource type="Resource" path="res://content/recipes/extractor_recipe.tres" id="2_recipe"]
 
 [resource]
 script = ExtResource("1_37vvf")
 id = &"extractor"
-display_name = "Extractor"
+display_name = "Extraktor"
 build_cost = {
 &"brick": 2,
 &"wood": 3
 }
-recipe = SubResource("Resource_3f70t")
+recipe = ExtResource("2_recipe")

@@ -12,7 +12,7 @@ config_version=5
 
 config/name="catan"
 run/main_scene="res://main/main.tscn"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -21,6 +21,7 @@ EventBus="*res://autoload/event_bus.gd"
 RNG="*res://autoload/rng.gd"
 ContentDB="*res://autoload/content_db.gd"
 GameState="*res://autoload/game_state.gd"
+UIManager="*res://autoload/ui_manager.gd"
 SaveManager="*res://autoload/save_manager.gd"
 
 [editor_plugins]
@@ -52,6 +53,11 @@ move_right={
 toggle_camera={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194306,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+interact={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":69,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
 

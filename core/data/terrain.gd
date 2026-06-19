@@ -33,4 +33,6 @@ const RESOURCE_NAMES := {
 	&"ore": "Erz",
 	&"grain": "Getreide",
 	&"wool": "Wolle",
+	&"plank": "Brett",
+	&"tool": "Werkzeug",
 }
