@@ -444,6 +444,21 @@ func _intent_discard(discards: Dictionary) -> void:
 		EventBus.discard_submitted.emit(pid, discards)
 
 
+# --- Intent: Relic-Draft (aktiver Drafter nimmt ein Relic auf) ------------------
+
+func request_draft_pick(relic_id: StringName) -> void:
+	if _is_authority_runtime():
+		EventBus.draft_pick_requested.emit(relic_id)
+	else:
+		_intent_draft_pick.rpc_id(1, String(relic_id))
+
+@rpc("any_peer", "call_remote", "reliable")
+func _intent_draft_pick(relic_id: String) -> void:
+	# Nur der Spieler, der laut Draft-Reihenfolge gerade dran ist, darf wählen.
+	if _sender_slot() == GameState.draft_current:
+		EventBus.draft_pick_requested.emit(StringName(relic_id))
+
+
 # --- Fakten: send_* (Host → alle / offline lokal) ------------------------------
 
 func send_resource(player_id: int, id: StringName, delta: int) -> void:
@@ -505,6 +520,27 @@ func send_game_won(player_id: int, score: int) -> void:
 		fact_game_won.rpc(player_id, score)
 	else:
 		fact_game_won(player_id, score)
+
+## Baut den Relic-Ring (Karussell) auf allen Peers auf.
+func send_draft_offer(relic_ids: Array) -> void:
+	if is_online():
+		fact_draft_offer.rpc(relic_ids)
+	else:
+		fact_draft_offer(relic_ids)
+
+## Setzt den aktuell ziehenden Draft-Spieler auf allen Peers (-1 = keiner).
+func send_draft_turn(player_id: int) -> void:
+	if is_online():
+		fact_draft_turn.rpc(player_id)
+	else:
+		fact_draft_turn(player_id)
+
+## Weist einem Spieler ein Relic zu (entfernt es auf allen Peers aus dem Ring).
+func send_relic_assigned(player_id: int, relic_id: StringName) -> void:
+	if is_online():
+		fact_relic_assigned.rpc(player_id, String(relic_id))
+	else:
+		fact_relic_assigned(player_id, String(relic_id))
 
 ## Synchronisiert die skalaren Zug-Zustände + feuert Phasen-/Aktivspieler-Signale.
 func send_turnstate() -> void:
@@ -584,6 +620,24 @@ func fact_game_won(player_id: int, score: int) -> void:
 	GameState.turn_phase = GameState.TurnPhase.GAME_OVER
 	EventBus.game_won.emit(player_id)
 	EventBus.run_ended.emit(score)
+
+@rpc("authority", "call_local", "reliable")
+func fact_draft_offer(relic_ids: Array) -> void:
+	EventBus.draft_ring_spawned.emit(relic_ids)
+
+@rpc("authority", "call_local", "reliable")
+func fact_draft_turn(player_id: int) -> void:
+	GameState.draft_current = player_id
+	EventBus.draft_turn_changed.emit(player_id)
+
+@rpc("authority", "call_local", "reliable")
+func fact_relic_assigned(player_id: int, relic_id: String) -> void:
+	var relic := ContentDB.get_relic(StringName(relic_id))
+	if relic == null:
+		return
+	GameState.players[player_id].relics.append(relic)
+	GameState.relics.append(relic)
+	EventBus.relic_acquired.emit(relic)
 
 @rpc("authority", "call_local", "reliable")
 func fact_turnstate(ts: Dictionary) -> void:

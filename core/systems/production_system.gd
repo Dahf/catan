@@ -24,7 +24,16 @@ func collect_resources(value: int) -> void:
 				continue
 			var amount := 2 if s.level == 2 else 1
 			var player: Player = GameState.players[s.owner_id]
-			GameState.add_resource_to(player, res, _apply_relic_multipliers(player, res, amount))
+			var ctx := {
+				"player": player,
+				"res": res,
+				"base_amount": amount,
+				"terrain": tile.terrain,
+				"settlement_level": s.level,
+				"dice_value": value,
+				"owner_id": s.owner_id,
+			}
+			GameState.add_resource_to(player, res, _apply_relic_multipliers(player, res, amount, ctx))
 
 
 ## Vergibt die Startressourcen für die zweite Setup-Siedlung: je angrenzendem
@@ -39,7 +48,7 @@ func grant_initial_resources(vertex: Vector3i, player: Player) -> void:
 			GameState.add_resource_to(player, res, 1)
 
 
-## Einziger Chokepoint für spätere Roguelike-Multiplier/Power-Ups (Relics).
-## Gibt vorerst die Menge unverändert zurück.
-func _apply_relic_multipliers(_player: Player, _res: StringName, amount: int) -> int:
-	return amount
+## Einziger Chokepoint für Roguelike-Multiplier/Power-Ups (Relics): addiert die
+## Produktions-Boni der Relics des Spielers (nie unter 0).
+func _apply_relic_multipliers(player: Player, _res: StringName, amount: int, ctx: Dictionary) -> int:
+	return maxi(0, amount + RelicSystem.production_bonus(player, ctx))

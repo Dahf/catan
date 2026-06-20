@@ -17,6 +17,7 @@ func _phase_flash(phase: int) -> String:
 	if phase == GameState.TurnPhase.ROBBER_DISCARD: return "Karten abwerfen"
 	if phase == GameState.TurnPhase.ROBBER_MOVE: return "Räuber setzen"
 	if phase == GameState.TurnPhase.BUILD: return "Bauen"
+	if phase == GameState.TurnPhase.DRAFT: return "Stage! Relikt wählen"
 	if phase == GameState.TurnPhase.GAME_OVER: return "Spiel vorbei"
 	return "?"
 

@@ -31,7 +31,15 @@ signal robber_tile_chosen(tile: Vector2i)
 signal robber_victim_chosen(victim_id: int)
 signal discard_submitted(player_id: int, discards: Dictionary)
 
-# --- Roguelike-Hooks (inert, für spätere Erweiterung) ---
+# --- Roguelike / Relic-Draft ---
 signal stage_completed(stage: int)
 signal run_ended(score: int)
 signal relic_acquired(relic: Relic)
+## Host → alle: ein Relic-Ring (Karussell) soll mit diesen IDs aufgebaut werden.
+signal draft_ring_spawned(relic_ids: Array)
+## Host → alle: dieser Spieler-Slot ist jetzt im Draft am Zug (-1 = keiner).
+signal draft_turn_changed(player_id: int)
+## Host → alle: der Draft dieser Stage ist beendet (Ring abräumen).
+signal draft_finished()
+## Absicht des aktiven Drafters, ein Relic aufzunehmen (auf Host validiert).
+signal draft_pick_requested(relic_id: StringName)

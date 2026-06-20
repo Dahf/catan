@@ -12,6 +12,7 @@ var cities: Array[Vector3i] = []          # Vertices mit Stadt (Level 2)
 var roads: Array = []                      # Array von Kanten ([Vector3i, Vector3i] sortiert)
 var victory_points: int = 0
 var is_ai: bool = false                    # Hook für spätere KI-Gegner
+var relics: Array[Relic] = []              # im Draft erworbene Relikte (Besitz pro Spieler)
 
 
 ## Aktueller Bestand einer Ressource.

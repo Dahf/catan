@@ -14,10 +14,11 @@ func can_place_settlement(vertex: Vector3i, player: Player) -> bool:
 		return false
 	if GameState.settlements.has(vertex):
 		return false
-	# Abstandsregel: kein direkter Nachbar-Vertex darf belegt sein.
-	for adj in hex.adjacent_vertices(vertex):
-		if GameState.settlements.has(adj):
-			return false
+	# Abstandsregel: kein direkter Nachbar-Vertex darf belegt sein (Relic kann sie aufheben).
+	if not RelicSystem.ignores_distance(player):
+		for adj in hex.adjacent_vertices(vertex):
+			if GameState.settlements.has(adj):
+				return false
 	if GameState.turn_phase == GameState.TurnPhase.SETUP:
 		return true
 	# Normales Spiel: mindestens eine angrenzende Kante gehört dem Spieler.
@@ -31,12 +32,16 @@ func can_place_road(edge, player: Player) -> bool:
 	if GameState.roads.has(key):
 		return false
 	var endpoints := hex.edge_endpoints(edge)
-	if not (_vertex_on_board(endpoints[0]) or _vertex_on_board(endpoints[1])):
+	# Beide Endpunkte müssen echte Brett-Ecken sein, sonst ragt die Straße ins Leere.
+	if not (_vertex_on_board(endpoints[0]) and _vertex_on_board(endpoints[1])):
 		return false
 	if GameState.turn_phase == GameState.TurnPhase.SETUP:
 		if not GameState.has_setup_anchor:
 			return false
 		return endpoints[0] == GameState.setup_road_anchor or endpoints[1] == GameState.setup_road_anchor
+	# Relic: Straßen ohne Anbindung erlaubt (Kante frei & on-board bereits geprüft).
+	if RelicSystem.disconnected_roads(player):
+		return true
 	# Normales Spiel: ein Endpunkt berührt eigene Siedlung/Stadt oder eigene Straße.
 	for v in endpoints:
 		if _vertex_owned_by(v, player):

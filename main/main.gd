@@ -16,6 +16,11 @@ var _setup_pos: int = 0
 # Räuber-Abwurf: noch ausstehende Spieler-IDs
 var _discard_queue: Array[int] = []
 
+# Relic-Draft (host-/offline-autoritativ)
+var _draft_order: Array[int] = []   # Pick-Reihenfolge (Spieler-Slots, Snake/Catchup)
+var _draft_pos: int = 0             # Index in _draft_order
+var _draft_ring: Array = []         # noch verfügbare Relic-IDs im Ring
+
 
 func _ready() -> void:
 	EventBus.settlement_placed.connect(_on_settlement_placed)
@@ -26,6 +31,7 @@ func _ready() -> void:
 	EventBus.robber_tile_chosen.connect(_on_robber_tile_chosen)
 	EventBus.robber_victim_chosen.connect(_on_robber_victim_chosen)
 	EventBus.discard_submitted.connect(_on_discard_submitted)
+	EventBus.draft_pick_requested.connect(_on_draft_pick_requested)
 	# VP-Neuberechnung läuft auf JEDEM Peer (deterministisch aus Siedlungen/Städten),
 	# damit auch Clients korrekte Siegpunkte anzeigen.
 	EventBus.settlement_placed.connect(_rescore_owner)
@@ -161,10 +167,15 @@ func end_turn() -> void:
 		return
 	if _check_win(GameState.current_player()):
 		return
-	GameState.current_player_index = (GameState.current_player_index + 1) % GameState.players.size()
+	var n := GameState.players.size()
+	GameState.current_player_index = (GameState.current_player_index + 1) % n
 	GameState.advance_turn()
-	GameState.turn_phase = GameState.TurnPhase.ROLL
-	_emit_phase()
+	# Synchroner Stage-Takt: nach jeder vollen Runde × ROUNDS_PER_STAGE → Draft.
+	if GameState.turn % (DraftConfig.ROUNDS_PER_STAGE * n) == 0:
+		_begin_stage_draft()
+	else:
+		GameState.turn_phase = GameState.TurnPhase.ROLL
+		_emit_phase()
 
 
 # --- Räuber (bei einer 7) ------------------------------------------------------
@@ -245,28 +256,110 @@ func _victims_at(tile: Vector2i) -> Array:
 			continue
 		if ids.has(s.owner_id):
 			continue
+		if RelicSystem.robber_immune(GameState.players[s.owner_id]):
+			continue   # Relic: dieser Spieler ist räuber-immun
 		if GameState.players[s.owner_id].total_cards() > 0:
 			ids.append(s.owner_id)
 	return ids
 
 
 func _steal_from(victim_id: int) -> void:
+	var thief: Player = GameState.current_player()
+	# Normaler Diebstahl + ggf. Relic-Extra-Diebstähle (Plünderer).
+	var count := 1 + RelicSystem.extra_seven_steals(thief)
+	for _i in count:
+		if not _steal_one(victim_id, thief):
+			break
+
+
+## Stiehlt eine zufällige Karte vom Opfer. Gibt false zurück, wenn das Opfer leer ist.
+func _steal_one(victim_id: int, thief: Player) -> bool:
 	var victim: Player = GameState.players[victim_id]
 	var pool: Array = []
 	for id in victim.resources:
 		for _i in victim.get_resource(id):
 			pool.append(id)
 	if pool.is_empty():
-		return
+		return false
 	var res: StringName = pool[RNG.randi_range(0, pool.size() - 1)]
-	var thief: Player = GameState.current_player()
 	GameState.add_resource_to(victim, res, -1)
 	GameState.add_resource_to(thief, res, 1)
 	Net.send_resource_stolen(victim_id, thief.id, res)
+	return true
 
 
 func _finish_robber() -> void:
 	GameState.turn_phase = GameState.TurnPhase.BUILD
+	_emit_phase()
+
+
+# --- Relic-Draft (Stage-Ende) --------------------------------------------------
+
+## Startet den Draft am Stage-Ende: Reihenfolge + Ring bauen, Phase/Ring/erster
+## Drafter an alle Peers melden. Nur host-/offline-autoritativ.
+func _begin_stage_draft() -> void:
+	GameState.stage += 1
+	GameState.turn_phase = GameState.TurnPhase.DRAFT
+	EventBus.stage_completed.emit(GameState.stage)
+	_build_draft_order()
+	_draft_pos = 0
+	_draft_ring = _draw_relic_pool(_draft_order.size())
+	_emit_phase()                       # Phase DRAFT an alle
+	Net.send_draft_offer(_draft_ring)   # Ring-Visual an alle
+	_advance_draft()                    # ersten Drafter melden (oder sofort beenden)
+
+
+## Baut die Pick-Reihenfolge nach Siegpunkten (Rückstand zuerst). SNAKE: zwei
+## Durchläufe als Schlange (1-2-3-4-4-3-2-1). CATCHUP: ein Durchlauf je Spieler.
+func _build_draft_order() -> void:
+	scoring.recompute_all()
+	_draft_order = DraftOrder.build(GameState.players)
+
+
+## Zieht eindeutige Relic-IDs für den Ring (deterministisch über RNG). CATCHUP legt
+## einen Auswahlpuffer drauf, damit auch der letzte Spieler echte Wahl hat.
+func _draw_relic_pool(num_picks: int) -> Array:
+	var pool_size := num_picks
+	if DraftConfig.MODE == DraftConfig.DraftMode.CATCHUP:
+		pool_size = num_picks + DraftConfig.CHOICES_PER_PICK - 1
+	var ids: Array = ContentDB.relics.keys()
+	RNG.shuffle(ids)
+	return ids.slice(0, mini(pool_size, ids.size()))
+
+
+## Meldet den nächsten Drafter oder beendet den Draft, wenn keiner/nichts mehr da ist.
+func _advance_draft() -> void:
+	if _draft_pos >= _draft_order.size() or _draft_ring.is_empty():
+		_finish_draft()
+		return
+	Net.send_draft_turn(_draft_order[_draft_pos])
+
+
+## Verarbeitet die Wahl des aktiven Drafters (Absender bereits in Net validiert).
+func _on_draft_pick_requested(relic_id: StringName) -> void:
+	if not _is_authority():
+		return
+	if GameState.turn_phase != GameState.TurnPhase.DRAFT:
+		return
+	if _draft_pos >= _draft_order.size():
+		return
+	if not _draft_ring.has(relic_id):
+		return   # Relic nicht (mehr) im Ring — ignorieren (Anti-Spoofing)
+	var pid := _draft_order[_draft_pos]
+	_draft_ring.erase(relic_id)
+	Net.send_relic_assigned(pid, relic_id)
+	scoring.recompute_all()             # Synergie-VP sofort spiegeln
+	if _check_win(GameState.players[pid]):
+		return                          # Relic-getriebener Sieg
+	_draft_pos += 1
+	_advance_draft()
+
+
+## Beendet den Draft: Ring abräumen, zurück in die normale Runde (ROLL).
+func _finish_draft() -> void:
+	Net.send_draft_turn(-1)
+	EventBus.draft_finished.emit()
+	GameState.turn_phase = GameState.TurnPhase.ROLL
 	_emit_phase()
 
 

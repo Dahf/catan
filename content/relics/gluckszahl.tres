@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RelicProduction" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/data/relics/relic_production.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gluckszahl"
+display_name = "Glückszahl 6 & 8"
+description = "Doppelte Ausbeute aus allen deinen Gebäuden, wenn eine 6 oder 8 gewürfelt wird."
+category = 0
+target_terrain = -1
+per_terrain = 0
+city_only = false
+dice_values = Array[int]([6, 8])
+flat_bonus = 0
+double = true

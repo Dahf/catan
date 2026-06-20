@@ -29,17 +29,23 @@ func _ready() -> void:
 
 
 ## Steuert der lokale Spieler diese Figur? Online: Multiplayer-Autorität (eigener
-## Peer). Offline (Hotseat): die Figur des aktuell am Zug befindlichen Spielers.
+## Peer). Offline (Hotseat): im Draft die Figur des aktiven Drafters, sonst die des
+## aktuell am Zug befindlichen Spielers.
 func _is_controlled() -> bool:
 	if Net.is_online():
 		return is_multiplayer_authority()
+	if GameState.turn_phase == GameState.TurnPhase.DRAFT:
+		return slot == GameState.draft_current
 	return slot == GameState.current_player_index
 
 
 func _physics_process(delta: float) -> void:
 	if not _is_controlled():
 		return   # Fremde Figuren: Position kommt per Sync (online) bzw. ruht (offline)
-	if GameState.is_input_blocked():
+	if GameState.turn_phase == GameState.TurnPhase.DRAFT:
+		if slot != GameState.draft_current:
+			return   # Im Draft darf nur der aktive Drafter laufen
+	elif GameState.is_input_blocked():
 		return   # Bewegung pausiert, solange ein Phasen-Overlay geöffnet ist
 
 	var input_x := Input.get_action_strength("move_right") - Input.get_action_strength("move_left")

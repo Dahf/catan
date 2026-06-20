@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicAggressive" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/data/relics/relic_aggressive.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pluendererbande"
+display_name = "Plündererbande"
+description = "Bei einer 7 stiehlst du 1 zusätzliche Karte vom Opfer."
+category = 3
+extra_steals = 1

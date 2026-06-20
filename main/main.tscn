@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://o56xegrxc8fa"]
+[gd_scene load_steps=7 format=3 uid="uid://o56xegrxc8fa"]
 
 [ext_resource type="Script" uid="uid://dk8y2s885x4qq" path="res://main/main.gd" id="1_main"]
 [ext_resource type="PackedScene" uid="uid://nb5n065t3tdg" path="res://presentation/board/game_board.tscn" id="2_board"]
 [ext_resource type="PackedScene" path="res://presentation/ui/hud.tscn" id="3_hud"]
 [ext_resource type="PackedScene" path="res://presentation/ui/phase_banner.tscn" id="7_phasebanner"]
 [ext_resource type="Script" path="res://presentation/ui/robber_overlay.gd" id="9_robber"]
+[ext_resource type="Script" path="res://presentation/ui/relic_panel.gd" id="10_relicpanel"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -27,3 +28,10 @@ anchors_preset = 15
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("9_robber")
+
+[node name="RelicPanel" type="Control" parent="UILayer"]
+layout_mode = 3
+anchors_preset = 15
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("10_relicpanel")

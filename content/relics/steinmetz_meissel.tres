@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RelicProduction" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/data/relics/relic_production.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steinmetz_meissel"
+display_name = "Steinmetz-Meißel"
+description = "+1 Erz für jede deiner Städte an einem Berg (Stadt liefert dort 3 statt 2)."
+category = 0
+target_terrain = 2
+per_terrain = 0
+city_only = true
+dice_values = Array[int]([])
+flat_bonus = 1
+double = false

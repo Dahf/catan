@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RelicProduction" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/data/relics/relic_production.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"holzfaeller_axt"
+display_name = "Holzfäller-Axt"
+description = "+1 Holz für jedes deiner Gebäude an einem Wald bei der Produktion."
+category = 0
+target_terrain = 0
+per_terrain = 1
+city_only = false
+dice_values = Array[int]([])
+flat_bonus = 0
+double = false

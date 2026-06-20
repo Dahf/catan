@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RelicRulebreak" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/data/relics/relic_rulebreak.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pfadfinder"
+display_name = "Pfadfinder"
+description = "Du darfst Straßen ohne Anbindung an deine Gebäude oder Straßen bauen."
+category = 1
+disconnected_roads = true
+ignore_distance = false
+robber_immune = false
+trade_two_to_one = false

@@ -49,6 +49,7 @@ var _depot_node: Node3D
 var _settlement_nodes: Dictionary = {}      # Vector3i -> Node3D
 var _characters_node: Node3D                # begehbare Figuren (eine pro Spieler)
 var _characters: Dictionary = {}            # slot(int) -> CharacterBody3D
+var _carousel: RelicCarousel                # Relic-Ring (Draft am Stage-Ende)
 var _robber_pawn: Node3D = null
 var _interact_indicator: Label3D
 var _ghost_node: Node3D = null
@@ -69,6 +70,10 @@ func _ready() -> void:
 	_walls_node = _new_child("Walls")
 	_depot_node = _new_child("Depot")
 	_characters_node = _new_child("Characters")
+
+	_carousel = RelicCarousel.new()
+	_carousel.name = "RelicCarousel"
+	add_child(_carousel)
 
 	_interact_indicator = Label3D.new()
 	_interact_indicator.text = "[E]"
@@ -92,6 +97,8 @@ func _ready() -> void:
 	EventBus.road_placed.connect(_on_road_placed)
 	EventBus.city_upgraded.connect(_on_city_upgraded)
 	EventBus.robber_moved.connect(_on_robber_moved)
+	# Draft: Brett ausblenden ("leerer Tisch"), nur Karussell + Figuren bleiben.
+	EventBus.phase_changed.connect(_on_phase_for_board)
 	# Reconnect: geänderte peer_id eines Slots → Figuren-Autorität aktualisieren.
 	Net.roster_changed.connect(_refresh_character_authorities)
 
@@ -123,6 +130,8 @@ func build_from_state() -> void:
 	_spawn_characters()
 	_build_depot()
 	_build_robber()
+	if _carousel != null:
+		_carousel.global_position = _overview_center   # Ring-Mittelpunkt = Brett-Mitte
 
 	# Bereits platzierte Strukturen (z.B. nach Snapshot/Laden) nachzeichnen.
 	for vertex in GameState.settlements:
@@ -169,6 +178,9 @@ func _build_interaction_allowed() -> bool:
 
 
 func _update_interact_target() -> void:
+	if GameState.turn_phase == GameState.TurnPhase.DRAFT:
+		_update_draft_target()
+		return
 	if not _build_interaction_allowed():
 		_interact_target = {}
 		_hide_ghost_and_indicator()
@@ -177,15 +189,20 @@ func _update_interact_target() -> void:
 	if kind == BuildKind.NONE:
 		_update_depot_target()
 	else:
-		_update_build_target(kind)
+		# Getragenes Bauteil am Depot wieder ablegen können (z.B. wenn man es doch
+		# nicht bauen kann), sonst normales Bau-Ziel.
+		var depot := _nearest_depot()
+		if GameState.turn_phase == GameState.TurnPhase.BUILD and depot != null:
+			_update_return_target(depot)
+		else:
+			_update_build_target(kind)
 
 
-## In BUILD ohne getragenen Typ: nächsten Depot-Punkt in Reichweite anvisieren.
-func _update_depot_target() -> void:
+## Nächster Depot-Punkt in Reichweite der lokalen Figur (oder null).
+func _nearest_depot() -> Node3D:
 	var lc := _local_character()
 	if lc == null:
-		_clear_build_target()
-		return
+		return null
 	var best: Node3D = null
 	var best_d := INTERACTION_RANGE
 	for body in _depot_node.get_children():
@@ -193,6 +210,12 @@ func _update_depot_target() -> void:
 		if d <= best_d:
 			best_d = d
 			best = body
+	return best
+
+
+## In BUILD ohne getragenen Typ: nächsten Depot-Punkt in Reichweite anvisieren.
+func _update_depot_target() -> void:
+	var best := _nearest_depot()
 	if best == null:
 		_interact_target = {}
 		_hide_ghost_and_indicator()
@@ -202,6 +225,15 @@ func _update_depot_target() -> void:
 	_interact_indicator.modulate = Color(1.0, 0.85, 0.2)
 	_interact_indicator.visible = true
 	_interact_indicator.global_position = best.global_position + Vector3(0.0, 1.4, 0.0)
+
+
+## Getragenes Bauteil am Depot ablegen: Rückgabe-Ziel + Indikator anzeigen.
+func _update_return_target(depot: Node3D) -> void:
+	_interact_target = {"return": true}
+	_hide_ghost()
+	_interact_indicator.modulate = Color(1.0, 0.55, 0.2)
+	_interact_indicator.visible = true
+	_interact_indicator.global_position = depot.global_position + Vector3(0.0, 1.4, 0.0)
 
 
 ## Bautyp aktiv: Ziel (Vertex/Kante/Tile) bestimmen und Ghost-Vorschau zeigen.
@@ -215,7 +247,7 @@ func _update_build_target(kind: int) -> void:
 	if kind == BuildKind.SETTLEMENT or kind == BuildKind.CITY:
 		var v := _nearest_vertex(pos)
 		var vp := _vertex_world(v)
-		if pos.distance_to(vp) > INTERACTION_RANGE:
+		if pos.distance_to(vp) > INTERACTION_RANGE or not _vertex_on_board(v):
 			_clear_build_target()
 			return
 		_interact_target = {"vertex": v}
@@ -226,7 +258,8 @@ func _update_build_target(kind: int) -> void:
 	elif kind == BuildKind.ROAD:
 		var edge := _nearest_edge(pos)
 		var mid := _edge_midpoint(edge)
-		if pos.distance_to(mid) > INTERACTION_RANGE:
+		var on_board: bool = _vertex_on_board(edge[0]) and _vertex_on_board(edge[1])
+		if pos.distance_to(mid) > INTERACTION_RANGE or not on_board:
 			_clear_build_target()
 			return
 		_interact_target = {"edge": edge}
@@ -246,11 +279,49 @@ func _clear_build_target() -> void:
 	_hide_ghost_and_indicator()
 
 
+## Draft: das nächste Relic-Pickup in Reichweite des aktiven Drafters anvisieren.
+func _update_draft_target() -> void:
+	if _carousel == null or _controlled_slot() != GameState.draft_current:
+		_clear_build_target()
+		return
+	var lc := _local_character()
+	if lc == null:
+		_clear_build_target()
+		return
+	var ring: Dictionary = _carousel.pickups()
+	var best_node: Node3D = null
+	var best_id: StringName = &""
+	var best_d := INTERACTION_RANGE
+	for id in ring:
+		var node: Node3D = ring[id]
+		var d := lc.global_position.distance_to(node.global_position)
+		if d <= best_d:
+			best_d = d
+			best_id = id
+			best_node = node
+	if best_node == null:
+		_interact_target = {}
+		_hide_ghost_and_indicator()
+		return
+	_interact_target = {"relic": best_id}
+	_hide_ghost()
+	_interact_indicator.modulate = Color(0.6, 0.9, 1.0)
+	_interact_indicator.visible = true
+	_interact_indicator.global_position = best_node.global_position + Vector3(0.0, 1.0, 0.0)
+
+
 # --- Eingabe -------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_camera"):
 		_cam_mode = CamMode.OVERVIEW if _cam_mode == CamMode.FOLLOW else CamMode.FOLLOW
+		return
+
+	# Draft: aktiver Drafter nimmt das anvisierte Relic per Interaktions-Taste auf.
+	if GameState.turn_phase == GameState.TurnPhase.DRAFT:
+		if event.is_action_pressed("interact") and _interact_target.has("relic") \
+				and _controlled_slot() == GameState.draft_current:
+			Net.request_draft_pick(_interact_target["relic"])
 		return
 
 	if GameState.is_input_blocked() or not _build_interaction_allowed():
@@ -262,6 +333,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if not event.is_action_pressed("interact"):
+		return
+
+	if _interact_target.has("return"):
+		_carried_kind = BuildKind.NONE
+		_detach_carry_visual()
 		return
 
 	if _interact_target.has("depot_kind"):
@@ -380,6 +456,20 @@ func _on_road_placed(edge, owner_id: int) -> void:
 func _on_robber_moved(tile: Vector2i) -> void:
 	if _robber_pawn != null:
 		_robber_pawn.global_position = hex_map.hex_to_world(tile) + Vector3(0.0, 0.3, 0.0)
+
+
+## Im Draft das Brett ausblenden ("leerer Tisch"): nur Karussell, Figuren und Tisch
+## bleiben sichtbar. Danach wieder einblenden.
+func _on_phase_for_board() -> void:
+	_set_board_visible(GameState.turn_phase != GameState.TurnPhase.DRAFT)
+
+
+func _set_board_visible(vis: bool) -> void:
+	if hex_map != null:
+		hex_map.visible = vis
+	for node in [_tokens, _buildings_node, _roads_node, _depot_node]:
+		if node != null:
+			node.visible = vis   # _robber_pawn hängt unter _buildings_node
 
 
 func _render_settlement(vertex: Vector3i, owner_id: int, level: int) -> void:
@@ -545,7 +635,11 @@ func _build_perimeter(mn: Vector3, mx: Vector3) -> void:
 ## Welchen Slot steuert dieser Client lokal? Online: eigener Roster-Slot.
 ## Offline (Hotseat): der aktuell am Zug befindliche Spieler.
 func _controlled_slot() -> int:
-	return Net.local_slot if Net.is_online() else GameState.current_player_index
+	if Net.is_online():
+		return Net.local_slot
+	if GameState.turn_phase == GameState.TurnPhase.DRAFT:
+		return GameState.draft_current   # Hotseat: aktiver Drafter
+	return GameState.current_player_index
 
 
 ## Die lokal gesteuerte Figur (oder null, falls noch nicht gespawnt).
@@ -801,6 +895,14 @@ func _vertex_world(vertex: Vector3i) -> Vector3:
 	for coord in adj:
 		sum += hex_map.hex_to_world(coord)
 	return sum / float(adj.size())
+
+
+## True, wenn der Vertex eine echte Ecke des Bretts ist (an ein reales Tile grenzt).
+func _vertex_on_board(vertex: Vector3i) -> bool:
+	for coord in _hex.vertex_adjacent_tiles(vertex):
+		if GameState.tiles.has(coord):
+			return true
+	return false
 
 
 func _nearest_vertex(world: Vector3) -> Vector3i:

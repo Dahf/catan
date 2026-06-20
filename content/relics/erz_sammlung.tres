@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RelicSynergy" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/data/relics/relic_synergy.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"erz_sammlung"
+display_name = "Erz-Sammlung"
+description = "+1 Siegpunkt für jedes Produktions-Relic, das du besitzt."
+category = 2
+vp_per_category = 0
+vp_per_n_relics = 0

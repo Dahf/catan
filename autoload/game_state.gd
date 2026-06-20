@@ -20,12 +20,13 @@ var setup_road_anchor: Vector3i = Vector3i.ZERO
 var has_setup_anchor: bool = false
 var setup_expect_road: bool = false   # true: aktueller Setup-Spieler muss Straße setzen
 
-# Roguelike-Hooks (inert, bleiben für spätere Erweiterung erhalten).
+# Roguelike: Run-/Draft-Zustand.
 var stage: int = 1
 var turn: int = 0
-var relics: Array[Relic] = []
+var relics: Array[Relic] = []          # global erworbene Relics (Log für Snapshot/Save)
+var draft_current: int = -1            # Spieler-Slot, der gerade im Draft am Zug ist (-1 = keiner)
 
-enum TurnPhase { SETUP, ROLL, ROBBER_DISCARD, ROBBER_MOVE, BUILD, GAME_OVER }
+enum TurnPhase { SETUP, ROLL, ROBBER_DISCARD, ROBBER_MOVE, BUILD, DRAFT, GAME_OVER }
 var turn_phase: TurnPhase = TurnPhase.SETUP
 
 const RESOURCE_IDS: Array[StringName] = [&"wood", &"brick", &"ore", &"grain", &"wool"]
@@ -75,6 +76,7 @@ func reset() -> void:
 	stage = 1
 	turn = 0
 	relics.clear()
+	draft_current = -1
 	turn_phase = TurnPhase.SETUP
 
 
@@ -188,6 +190,7 @@ func to_snapshot() -> Dictionary:
 			"cities": p.cities.duplicate(),
 			"roads": p.roads.duplicate(),
 			"vp": p.victory_points,
+			"relics": _relic_ids(p.relics),
 		})
 	var ts: Dictionary = {}
 	for coord in tiles:
@@ -207,10 +210,31 @@ func to_snapshot() -> Dictionary:
 		"robber": robber_tile,
 		"phase": turn_phase,
 		"turn": turn,
+		"stage": stage,
+		"relics": _relic_ids(relics),
+		"draft_current": draft_current,
 		"anchor": setup_road_anchor,
 		"has_anchor": has_setup_anchor,
 		"expect_road": setup_expect_road,
 	}
+
+
+## Relic-Liste → Array von String-IDs (für Snapshot; rehydriert via ContentDB).
+func _relic_ids(arr: Array) -> Array:
+	var ids: Array = []
+	for r in arr:
+		ids.append(String(r.id))
+	return ids
+
+
+## Array von String-IDs → typisierte Relic-Liste (unbekannte IDs werden übersprungen).
+func _relics_from_ids(ids: Array) -> Array[Relic]:
+	var out: Array[Relic] = []
+	for id in ids:
+		var r := ContentDB.get_relic(StringName(id))
+		if r != null:
+			out.append(r)
+	return out
 
 
 ## Stellt den Spielzustand aus einem Snapshot wieder her (überschreibt alles).
@@ -235,6 +259,7 @@ func apply_snapshot(d: Dictionary) -> void:
 		p.cities.assign(pd["cities"])
 		p.roads = (pd["roads"] as Array).duplicate()
 		p.victory_points = pd["vp"]
+		p.relics = _relics_from_ids(pd.get("relics", []))
 		players.append(p)
 	for v in d["settlements"]:
 		var sd: Dictionary = d["settlements"][v]
@@ -247,6 +272,9 @@ func apply_snapshot(d: Dictionary) -> void:
 	current_player_index = d["current"]
 	turn_phase = d["phase"]
 	turn = d["turn"]
+	stage = d.get("stage", 1)
+	relics = _relics_from_ids(d.get("relics", []))
+	draft_current = d.get("draft_current", -1)
 	setup_road_anchor = d["anchor"]
 	has_setup_anchor = d["has_anchor"]
 	setup_expect_road = d["expect_road"]

@@ -7,8 +7,7 @@ var _turn_panel: PanelContainer
 var _turn_label: Label
 var _phase_label: Label
 
-var _resource_panel: PanelContainer
-var _chip_box: HBoxContainer
+var _card_hand: CardHand
 
 var _dice_value_label: Label
 
@@ -23,6 +22,7 @@ func _phase_name(phase: int) -> String:
 	if phase == GameState.TurnPhase.ROBBER_DISCARD: return "Karten abwerfen"
 	if phase == GameState.TurnPhase.ROBBER_MOVE: return "Räuber setzen"
 	if phase == GameState.TurnPhase.BUILD: return "Bauen"
+	if phase == GameState.TurnPhase.DRAFT: return "Draften"
 	if phase == GameState.TurnPhase.GAME_OVER: return "Spiel vorbei"
 	return "?"
 
@@ -42,6 +42,7 @@ func _ready() -> void:
 	EventBus.active_player_changed.connect(_on_active_player_changed)
 	EventBus.phase_changed.connect(_on_phase_changed)
 	EventBus.game_won.connect(_on_game_won)
+	EventBus.draft_turn_changed.connect(_on_draft_turn_changed)
 
 	UIManager.register(&"hud", self)
 	call_deferred("_refresh_all")
@@ -71,16 +72,9 @@ func _build_turn_banner() -> void:
 
 
 func _build_resource_bar() -> void:
-	_resource_panel = PanelContainer.new()
-	_resource_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_resource_panel.offset_bottom = -16
-	_resource_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_resource_panel)
-
-	_chip_box = HBoxContainer.new()
-	_chip_box.add_theme_constant_override("separation", 8)
-	_chip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_resource_panel.add_child(_chip_box)
+	# Ressourcen als aufgefächerte Handkarten unten im Bild (verankert sich selbst).
+	_card_hand = CardHand.new()
+	add_child(_card_hand)
 
 
 func _build_dice_badge() -> void:
@@ -184,19 +178,28 @@ func _update_turn_label() -> void:
 	_turn_label.add_theme_color_override("font_color", p.color)
 
 
+## Draft: zeigt an, wer gerade ein Relic wählt (und beim lokalen Spieler den Hinweis).
+func _on_draft_turn_changed(player_id: int) -> void:
+	if player_id < 0 or player_id >= GameState.players.size():
+		return
+	var p := GameState.players[player_id]
+	var is_me := player_id == Net.local_slot if Net.is_online() else true
+	if is_me:
+		_turn_label.text = "%s: Lauf zu einem Relikt und drücke [E]" % p.display_name
+	else:
+		_turn_label.text = "%s wählt ein Relikt…" % p.display_name
+	_turn_label.add_theme_color_override("font_color", p.color)
+
+
 func _update_actions() -> void:
 	_roll_button.visible = GameState.turn_phase == GameState.TurnPhase.ROLL
 	_end_button.visible = GameState.turn_phase == GameState.TurnPhase.BUILD
 
 
 func _refresh_resources() -> void:
-	for child in _chip_box.get_children():
-		child.queue_free()
 	if GameState.players.is_empty():
 		return
-	var res := GameState.current_player().resources
-	for id in CatanPalette.RESOURCE_ORDER:
-		_chip_box.add_child(ResourceChip.build(id, int(res.get(id, 0))))
+	_card_hand.set_cards(GameState.current_player().resources)
 
 
 func _rebuild_scoreboard() -> void:

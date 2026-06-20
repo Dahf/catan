@@ -11,6 +11,7 @@ const WIN_VP := 10
 func recompute(player: Player) -> int:
 	var vp := player.settlements.size() + player.cities.size() * 2
 	# TODO (später): + längste Handelsstraße (2) + größte Rittermacht (2) + Dev-Karten-VP
+	vp += RelicSystem.bonus_vp(player)   # Synergie-Relics (z.B. +1 VP je Erz-Relic)
 	player.victory_points = vp
 	EventBus.victory_points_changed.emit(player.id, vp)
 	return vp
