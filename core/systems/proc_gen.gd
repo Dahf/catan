@@ -1,44 +1,44 @@
 class_name ProcGen
 extends RefCounted
+## Erzeugt das klassische 19-Hex-Catan-Brett (Reihen 3-4-5-4-3) mit
+## authentischer Ressourcen- und Zahlen-Token-Verteilung. Seed-basiert über RNG.
+
 var hex := HexGrid.new()
-var baserad := 4
-var radius := baserad
 
-## Seed-basierte prozedurale Generierung einer Stage/Region.
-## Nutzt den zentralen RNG für reproduzierbare Welten.
+# 18 produzierende Tiles + 1 Wüste (klassische Catan-Verteilung).
+const RESOURCE_BAG: Array = [
+	Terrain.TerrainType.FOREST, Terrain.TerrainType.FOREST, Terrain.TerrainType.FOREST, Terrain.TerrainType.FOREST,
+	Terrain.TerrainType.FIELDS, Terrain.TerrainType.FIELDS, Terrain.TerrainType.FIELDS, Terrain.TerrainType.FIELDS,
+	Terrain.TerrainType.PASTURE, Terrain.TerrainType.PASTURE, Terrain.TerrainType.PASTURE, Terrain.TerrainType.PASTURE,
+	Terrain.TerrainType.HILLS, Terrain.TerrainType.HILLS, Terrain.TerrainType.HILLS,
+	Terrain.TerrainType.MOUNTAINS, Terrain.TerrainType.MOUNTAINS, Terrain.TerrainType.MOUNTAINS,
+	Terrain.TerrainType.DESERT,
+]
+
+# 18 Zahlen-Token (kein 7). Werden den produzierenden Tiles der Reihe nach zugewiesen.
+const TOKEN_BAG: Array = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
 
 
-## Generiert eine komplette Stage (Terrain, Token, Start, Modifikatoren).
-func generate_stage(stage: int) -> void:
-	#todo rng, radius, gamestate clear
-	RNG.seed_run(GameState.seed + stage)
-	generate_terrain()
-	assign_number_tokens()
-	radius = baserad + stage
+## Generiert das komplette 19-Hex-Brett in den GameState.
+func generate_board() -> void:
+	RNG.seed_run(GameState.seed)
+	GameState.tiles.clear()
 
+	var coords := hex.get_range(Vector2i.ZERO, 2)   # exakt 19 Tiles (3-4-5-4-3)
+	var terrains := RESOURCE_BAG.duplicate()
+	RNG.shuffle(terrains)
+	var tokens := TOKEN_BAG.duplicate()
+	RNG.shuffle(tokens)
 
-## Verteilt Terrain-Typen über das Brett.
-func generate_terrain() -> void:
-	for coord in hex.get_range(Vector2i.ZERO, radius):
-		var roll := RNG.randi_range(1, 100)
+	var token_i := 0
+	for i in coords.size():
 		var tile := Tile.new()
-		tile.coord = coord
-		tile.terrain = roll % Terrain.TerrainType.size()
-		GameState.tiles[coord] = tile
-
-
-## Weist den Tiles Zahlen-Token (2..12) zu.
-func assign_number_tokens() -> void:
-	for coord in GameState.tiles:
-		var tile : Tile = GameState.tiles[coord]
-		if tile.terrain == Terrain.TerrainType.DESERT or tile.terrain == Terrain.TerrainType.WATER:
-			tile.number_token=0
-			continue
-		var roll := RNG.randi_range(2, 12)
-		tile.number_token = roll
-
-
-## Wählt die Startposition des Spielers.
-func choose_start_position() -> Vector2i:
-	# TODO
-	return Vector2i.ZERO
+		tile.coord = coords[i]
+		tile.terrain = terrains[i]
+		if tile.terrain == Terrain.TerrainType.DESERT:
+			tile.number_token = 0
+			GameState.robber_tile = tile.coord   # Räuber startet auf der Wüste
+		else:
+			tile.number_token = tokens[token_i]
+			token_i += 1
+		GameState.tiles[tile.coord] = tile

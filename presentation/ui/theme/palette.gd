@@ -20,38 +20,12 @@ const RESOURCE_COLORS := {
 	&"ore": Color(0.58, 0.55, 0.5),
 	&"grain": Color(0.88, 0.72, 0.25),
 	&"wool": Color(0.85, 0.87, 0.9),
-	&"plank": Color(0.78, 0.55, 0.3),
-	&"tool": Color(0.55, 0.5, 0.45),
 }
 
 ## Feste Anzeige-Reihenfolge der Ressourcen, damit Leisten nicht "springen".
 const RESOURCE_ORDER: Array[StringName] = [
-	&"wood", &"brick", &"ore", &"grain", &"wool", &"plank", &"tool",
+	&"wood", &"brick", &"ore", &"grain", &"wool",
 ]
-
-## Badge-Farbe je Bautyp-Kategorie (BuildingDef.Category).
-const CATEGORY_COLORS := {
-	BuildingDef.Category.EXTRACTOR: AMBER_GOLD,
-	BuildingDef.Category.PROCESSOR: FOREST_GREEN,
-	BuildingDef.Category.FACTORY: LEATHER_RED,
-	BuildingDef.Category.INFRASTRUCTURE: PARCHMENT_DARK,
-	BuildingDef.Category.SETTLEMENT: WOOD_BROWN,
-}
-
-const CATEGORY_NAMES := {
-	BuildingDef.Category.EXTRACTOR: "Extraktoren",
-	BuildingDef.Category.PROCESSOR: "Verarbeitung",
-	BuildingDef.Category.FACTORY: "Fabriken",
-	BuildingDef.Category.INFRASTRUCTURE: "Infrastruktur",
-	BuildingDef.Category.SETTLEMENT: "Siedlungen",
-}
-
-## Tier-Badge-Farbe für Siedlungen (eskalierend mit Bedeutung).
-const TIER_COLORS := {
-	1: PARCHMENT_DARK,
-	2: AMBER_GOLD,
-	3: LEATHER_RED,
-}
 
 
 static func resource_label(id: StringName) -> String:

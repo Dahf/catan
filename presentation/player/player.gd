@@ -18,6 +18,9 @@ extends CharacterBody3D
 ## Slot für das aktuell getragene Bauteil-Visual (von game_board.gd befüllt).
 @onready var carry_slot: Node3D = $Model/CarrySlot
 
+## Roster-Slot dieser Figur (von game_board beim Spawn gesetzt).
+var slot: int = -1
+
 
 func _ready() -> void:
 	if character_model != null:
@@ -25,7 +28,17 @@ func _ready() -> void:
 		$Model.add_child(character_model.instantiate())
 
 
+## Steuert der lokale Spieler diese Figur? Online: Multiplayer-Autorität (eigener
+## Peer). Offline (Hotseat): die Figur des aktuell am Zug befindlichen Spielers.
+func _is_controlled() -> bool:
+	if Net.is_online():
+		return is_multiplayer_authority()
+	return slot == GameState.current_player_index
+
+
 func _physics_process(delta: float) -> void:
+	if not _is_controlled():
+		return   # Fremde Figuren: Position kommt per Sync (online) bzw. ruht (offline)
 	if GameState.is_input_blocked():
 		return   # Bewegung pausiert, solange ein Phasen-Overlay geöffnet ist
 

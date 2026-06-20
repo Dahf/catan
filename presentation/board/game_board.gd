@@ -1,47 +1,60 @@
 extends Node3D
-## Zeigt das Spielbrett in 3D an und reagiert auf Core-Events.
-## Liest aus GameState, schickt Spieler-Eingaben (Maus-Raycast) als Commands an den Core.
-## Steuert außerdem die isometrische Kamera (Follow <-> Übersicht) und platziert den
-## laufbaren Character.
+## Zeigt das Catan-Brett in 3D und übersetzt Spieler-Eingaben (begehbare Figur +
+## Taste E) in Bau-Commands an den Core. Steuert außerdem die isometrische Kamera.
+##
+## Die begehbare Figur repräsentiert im Hot-Seat stets den aktuellen Spieler.
+## Bautyp je nach Phase: SETUP erzwingt Siedlung→Straße, ROBBER_MOVE den Räuber,
+## in BUILD wählt der Spieler aus der Bau-Palette (Depot) Straße/Siedlung/Stadt.
 
 @onready var hex_map: HexBoard3D = $HexBoard
 @onready var camera: Camera3D = $Camera3D
 @onready var light: DirectionalLight3D = $DirectionalLight3D
-@onready var player: CharacterBody3D = $Player
+
+const PLAYER_SCENE := preload("res://presentation/player/player.tscn")
 
 enum CamMode { FOLLOW, OVERVIEW }
+enum BuildKind { NONE, ROAD, SETTLEMENT, CITY, ROBBER }
 
-const ISO_PITCH := -45.0     # Grad, Blick schräg nach unten
-const ISO_YAW := 45.0        # Grad, isometrische Drehung
-const FOLLOW_SIZE := 16.0    # orthogonale Sichthöhe im Follow-Modus
-const FOLLOW_BACK := 24.0    # Abstand der Kamera entlang ihrer Blickachse
-const INTERACTION_RANGE := 3.0   # max. Abstand Spieler <-> Gebäude für E-Interaktion
+const ISO_PITCH := -45.0
+const ISO_YAW := 45.0
+const FOLLOW_SIZE := 16.0
+const FOLLOW_BACK := 24.0
+const INTERACTION_RANGE := 3.0
 
-const DEPOT_SPACING := 2.8   # Abstand zwischen den Depot-Pickup-Punkten
-
-const HEX_EDGE_PAD := 1.2        # Rand um die Hex-Mittelpunkte, bis zur äußeren Hex-Kante (Depot-Abstand)
-const TABLE_PAD := 14.0          # großzügiger, aber endlicher Rand um die Hex-Fläche
-const TABLE_THICKNESS := 0.6     # sichtbare Dicke der Tischplatte
+const DEPOT_SPACING := 2.8
+const HEX_EDGE_PAD := 1.2
+const TABLE_PAD := 14.0
+const TABLE_THICKNESS := 0.6
 const LEG_HEIGHT := 9.0
-const LEG_SIZE := 1.8            # Breite/Tiefe der rechteckigen Beine
-const LEG_INSET := LEG_SIZE / 2.0   # Beine sitzen bündig an der Tischkante
-const TABLE_UV_TILE := 2.0       # Weltgröße einer Textur-Kachel (Planke)
-const TABLE_COLOR := Color(0.42, 0.27, 0.16)   # Holzbraun
+const LEG_SIZE := 1.8
+const LEG_INSET := LEG_SIZE / 2.0
+const TABLE_UV_TILE := 2.0
+const TABLE_COLOR := Color(0.42, 0.27, 0.16)
+const DEPOT_BASE_COLOR := Color(0.85, 0.7, 0.25)
+
+const DEPOT_KINDS := [BuildKind.ROAD, BuildKind.SETTLEMENT, BuildKind.CITY]
+const KIND_NAMES := {
+	BuildKind.ROAD: "Straße",
+	BuildKind.SETTLEMENT: "Siedlung",
+	BuildKind.CITY: "Stadt",
+}
 
 var _hex := HexGrid.new()
-var _carried_def: BuildingDef = null   # aktuell vom Spieler getragener Bautyp
-var _buildings_node: Node3D
+var _carried_kind: int = BuildKind.NONE   # in BUILD getragener Bautyp aus dem Depot
+var _buildings_node: Node3D                # Siedlungen/Städte
+var _roads_node: Node3D                     # Straßen
 var _tokens: Node3D
 var _walls_node: Node3D
 var _depot_node: Node3D
-var _holo_labels: Dictionary = {}   # Vector2i -> Label3D
-var _settlement_holo_labels: Dictionary = {}   # Vector3i -> Label3D
-var _demand_system := DemandSystem.new()
+var _settlement_nodes: Dictionary = {}      # Vector3i -> Node3D
+var _characters_node: Node3D                # begehbare Figuren (eine pro Spieler)
+var _characters: Dictionary = {}            # slot(int) -> CharacterBody3D
+var _robber_pawn: Node3D = null
 var _interact_indicator: Label3D
-var _ghost_node: Node3D = null   # Halbtransparente Bauvorschau am Drop-Ziel (nur während des Tragens)
+var _ghost_node: Node3D = null
 var _ghost_mat_valid: StandardMaterial3D
 var _ghost_mat_invalid: StandardMaterial3D
-var _interact_target: Dictionary = {}   # {"coord"|"vertex": ...} oder {"depot_def": BuildingDef} oder {}
+var _interact_target: Dictionary = {}       # {"depot_kind"|"vertex"|"edge"|"tile": ...}
 var _cam_mode: CamMode = CamMode.FOLLOW
 var _overview_center := Vector3.ZERO
 var _overview_size := 24.0
@@ -50,18 +63,12 @@ var _bounds_max := Vector3.ZERO
 
 
 func _ready() -> void:
-	_buildings_node = Node3D.new()
-	_buildings_node.name = "Buildings"
-	add_child(_buildings_node)
-	_tokens = Node3D.new()
-	_tokens.name = "Tokens"
-	add_child(_tokens)
-	_walls_node = Node3D.new()
-	_walls_node.name = "Walls"
-	add_child(_walls_node)
-	_depot_node = Node3D.new()
-	_depot_node.name = "Depot"
-	add_child(_depot_node)
+	_buildings_node = _new_child("Buildings")
+	_roads_node = _new_child("Roads")
+	_tokens = _new_child("Tokens")
+	_walls_node = _new_child("Walls")
+	_depot_node = _new_child("Depot")
+	_characters_node = _new_child("Characters")
 
 	_interact_indicator = Label3D.new()
 	_interact_indicator.text = "[E]"
@@ -82,22 +89,28 @@ func _ready() -> void:
 	light.shadow_enabled = true
 
 	EventBus.settlement_placed.connect(_on_settlement_placed)
-	EventBus.building_placed.connect(_on_building_placed)
-	EventBus.turn_advanced.connect(_on_turn_advanced)
-	EventBus.building_updated.connect(_on_building_updated)
+	EventBus.road_placed.connect(_on_road_placed)
+	EventBus.city_upgraded.connect(_on_city_upgraded)
+	EventBus.robber_moved.connect(_on_robber_moved)
+	# Reconnect: geänderte peer_id eines Slots → Figuren-Autorität aktualisieren.
+	Net.roster_changed.connect(_refresh_character_authorities)
+
+
+func _new_child(node_name: String) -> Node3D:
+	var n := Node3D.new()
+	n.name = node_name
+	add_child(n)
+	return n
 
 
 ## Baut die komplette 3D-Darstellung aus dem aktuellen GameState neu auf.
 func build_from_state() -> void:
 	hex_map.clear_board()
-	for child in _tokens.get_children():
-		child.queue_free()
-	for child in _buildings_node.get_children():
-		child.queue_free()
-	for child in _walls_node.get_children():
-		child.queue_free()
-	for child in _depot_node.get_children():
-		child.queue_free()
+	for node in [_tokens, _buildings_node, _roads_node, _walls_node, _depot_node, _characters_node]:
+		for child in node.get_children():
+			child.queue_free()
+	_settlement_nodes.clear()
+	_characters.clear()
 
 	for coord in GameState.tiles:
 		var tile: Tile = GameState.tiles[coord]
@@ -107,11 +120,21 @@ func build_from_state() -> void:
 
 	_compute_bounds()
 	_build_table()
-	_place_player_start()
+	_spawn_characters()
 	_build_depot()
+	_build_robber()
+
+	# Bereits platzierte Strukturen (z.B. nach Snapshot/Laden) nachzeichnen.
+	for vertex in GameState.settlements:
+		var s: Settlement = GameState.settlements[vertex]
+		_render_settlement(vertex, s.owner_id, s.level)
+	for p in GameState.players:
+		for edge in p.roads:
+			var road := _make_road(_player_color(p.id))
+			road.global_transform = _edge_xform(edge)
+			_roads_node.add_child(road)
 
 
-## Aktualisiert die Darstellung (z.B. nach einem Tick).
 func refresh() -> void:
 	build_from_state()
 
@@ -121,118 +144,268 @@ func _process(_delta: float) -> void:
 	_update_interact_target()
 
 
-## Aktualisiert das Interaktionsziel: ohne getragenes Bauteil das nächste
-## Gebäude/Siedlung/Depot-Pickup in Reichweite, mit getragenem Bauteil das
-## Drop-Ziel (Tile/Vertex) unter bzw. nahe dem Spieler.
+# --- Bau-Modus / Ziel-Erkennung ------------------------------------------------
+
+## Welcher Bautyp ist im aktuellen Phasen-Kontext aktiv?
+func _current_build_kind() -> int:
+	if GameState.turn_phase == GameState.TurnPhase.SETUP:
+		return BuildKind.ROAD if GameState.setup_expect_road else BuildKind.SETTLEMENT
+	if GameState.turn_phase == GameState.TurnPhase.ROBBER_MOVE:
+		return BuildKind.ROBBER
+	if GameState.turn_phase == GameState.TurnPhase.BUILD:
+		return _carried_kind
+	return BuildKind.NONE
+
+
+func _build_interaction_allowed() -> bool:
+	# Bauen/Räuber nur für den lokal gesteuerten Spieler und nur in seinem Zug.
+	if _controlled_slot() != GameState.current_player_index:
+		return false
+	return GameState.turn_phase in [
+		GameState.TurnPhase.SETUP,
+		GameState.TurnPhase.BUILD,
+		GameState.TurnPhase.ROBBER_MOVE,
+	]
+
+
 func _update_interact_target() -> void:
-	if _carried_def == null:
-		_update_interact_target_idle()
-	else:
-		_update_interact_target_carrying()
-
-
-func _update_interact_target_idle() -> void:
-	var best_body : Node3D = null
-	var best_d := INTERACTION_RANGE
-	for body in _buildings_node.get_children():
-		if not (body.has_meta(&"coord") or body.has_meta(&"vertex")):
-			continue
-		var d := player.global_position.distance_to(body.global_position)
-		if d <= best_d:
-			best_d = d
-			best_body = body
-	for body in _depot_node.get_children():
-		var d := player.global_position.distance_to(body.global_position)
-		if d <= best_d:
-			best_d = d
-			best_body = body
-
-	if best_body == null:
+	if not _build_interaction_allowed():
 		_interact_target = {}
-		_interact_indicator.visible = false
+		_hide_ghost_and_indicator()
 		return
-
-	if best_body.has_meta(&"coord"):
-		_interact_target = {"coord": best_body.get_meta(&"coord")}
-	elif best_body.has_meta(&"vertex"):
-		_interact_target = {"vertex": best_body.get_meta(&"vertex")}
+	var kind := _current_build_kind()
+	if kind == BuildKind.NONE:
+		_update_depot_target()
 	else:
-		_interact_target = {"depot_def": best_body.get_meta(&"depot_def")}
+		_update_build_target(kind)
 
+
+## In BUILD ohne getragenen Typ: nächsten Depot-Punkt in Reichweite anvisieren.
+func _update_depot_target() -> void:
+	var lc := _local_character()
+	if lc == null:
+		_clear_build_target()
+		return
+	var best: Node3D = null
+	var best_d := INTERACTION_RANGE
+	for body in _depot_node.get_children():
+		var d := lc.global_position.distance_to(body.global_position)
+		if d <= best_d:
+			best_d = d
+			best = body
+	if best == null:
+		_interact_target = {}
+		_hide_ghost_and_indicator()
+		return
+	_interact_target = {"depot_kind": best.get_meta(&"build_kind")}
+	_hide_ghost()
 	_interact_indicator.modulate = Color(1.0, 0.85, 0.2)
 	_interact_indicator.visible = true
-	_interact_indicator.global_position = best_body.global_position + Vector3(0.0, 1.1, 0.0)
+	_interact_indicator.global_position = best.global_position + Vector3(0.0, 1.4, 0.0)
 
 
-func _update_interact_target_carrying() -> void:
-	var pos := player.global_position
-	if _carried_def.placement == BuildingDef.Placement.TILE:
+## Bautyp aktiv: Ziel (Vertex/Kante/Tile) bestimmen und Ghost-Vorschau zeigen.
+func _update_build_target(kind: int) -> void:
+	var lc := _local_character()
+	if lc == null:
+		_clear_build_target()
+		return
+	var pos := lc.global_position
+	var p := GameState.current_player()
+	if kind == BuildKind.SETTLEMENT or kind == BuildKind.CITY:
+		var v := _nearest_vertex(pos)
+		var vp := _vertex_world(v)
+		if pos.distance_to(vp) > INTERACTION_RANGE:
+			_clear_build_target()
+			return
+		_interact_target = {"vertex": v}
+		if kind == BuildKind.CITY:
+			_show_ghost(_make_ghost_city(), _xform(vp), GameState.can_upgrade_city(v, p))
+		else:
+			_show_ghost(_make_ghost_settlement(), _xform(vp), GameState.can_place_settlement(v, p))
+	elif kind == BuildKind.ROAD:
+		var edge := _nearest_edge(pos)
+		var mid := _edge_midpoint(edge)
+		if pos.distance_to(mid) > INTERACTION_RANGE:
+			_clear_build_target()
+			return
+		_interact_target = {"edge": edge}
+		_show_ghost(_make_ghost_road(), _edge_xform(edge), GameState.can_place_road(edge, p))
+	elif kind == BuildKind.ROBBER:
 		var coord := hex_map.world_to_hex(pos)
-		var tile : Tile = GameState.tiles.get(coord)
-		if tile == null or player.global_position.distance_to(hex_map.hex_to_world(coord)) > INTERACTION_RANGE:
-			_interact_target = {}
-			_hide_ghost_and_indicator()
+		var cp := hex_map.hex_to_world(coord)
+		if not GameState.tiles.has(coord) or pos.distance_to(cp) > INTERACTION_RANGE:
+			_clear_build_target()
 			return
-		_interact_target = {"coord": coord}
-		_show_ghost_at(hex_map.hex_to_world(coord), _can_drop_at_coord(coord))
-	else:
-		var vertex := _nearest_vertex(pos)
-		var vpos := _vertex_world(vertex)
-		if pos.distance_to(vpos) > INTERACTION_RANGE:
-			_interact_target = {}
-			_hide_ghost_and_indicator()
-			return
-		_interact_target = {"vertex": vertex}
-		_show_ghost_at(vpos, _can_drop_at_vertex(vertex))
+		_interact_target = {"tile": coord}
+		_show_ghost(_make_ghost_robber(), _xform(cp + Vector3(0.0, 0.2, 0.0)), coord != GameState.robber_tile)
 
 
-## Positioniert die Bauvorschau (Ghost) + "[E]"-Hinweis am Drop-Ziel und
-## färbt den Ghost je nach Platzierbarkeit grün oder rot.
-func _show_ghost_at(world_pos: Vector3, valid: bool) -> void:
-	if _ghost_node == null:
-		_ghost_node = _make_ghost(_carried_def)
-		add_child(_ghost_node)
-	_ghost_node.global_position = world_pos
-	_ghost_node.visible = true
+func _clear_build_target() -> void:
+	_interact_target = {}
+	_hide_ghost_and_indicator()
+
+
+# --- Eingabe -------------------------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_camera"):
+		_cam_mode = CamMode.OVERVIEW if _cam_mode == CamMode.FOLLOW else CamMode.FOLLOW
+		return
+
+	if GameState.is_input_blocked() or not _build_interaction_allowed():
+		return
+
+	if event.is_action_pressed("ui_cancel") and _carried_kind != BuildKind.NONE:
+		_carried_kind = BuildKind.NONE
+		_detach_carry_visual()
+		return
+
+	if not event.is_action_pressed("interact"):
+		return
+
+	if _interact_target.has("depot_kind"):
+		_carried_kind = _interact_target["depot_kind"]
+		_attach_carry_visual(_carried_kind)
+		return
+
+	if _interact_target.has("vertex"):
+		var v: Vector3i = _interact_target["vertex"]
+		var kind := _current_build_kind()
+		if kind == BuildKind.CITY:
+			if Net.request_upgrade_city(v):
+				_after_place()
+		elif Net.request_place_settlement(v):
+			_after_place()
+	elif _interact_target.has("edge"):
+		if Net.request_place_road(_interact_target["edge"]):
+			_after_place()
+	elif _interact_target.has("tile"):
+		Net.request_robber_tile(_interact_target["tile"])
+
+
+## Nach erfolgreicher Platzierung: in BUILD den getragenen Typ ablegen.
+func _after_place() -> void:
+	if GameState.turn_phase == GameState.TurnPhase.BUILD:
+		_carried_kind = BuildKind.NONE
+		_detach_carry_visual()
+	_hide_ghost_and_indicator()
+
+
+# --- Ghost-Vorschau ------------------------------------------------------------
+
+func _show_ghost(ghost: Node3D, xform: Transform3D, valid: bool) -> void:
+	if _ghost_node != null:
+		_ghost_node.queue_free()
+	_ghost_node = ghost
+	add_child(_ghost_node)
+	_ghost_node.global_transform = xform
 	_set_ghost_valid(valid)
-
-	_interact_indicator.global_position = world_pos + Vector3(0.0, 0.9, 0.0)
+	_interact_indicator.global_position = xform.origin + Vector3(0.0, 0.9, 0.0)
 	_interact_indicator.modulate = Color.LIME_GREEN if valid else Color.ORANGE_RED
 	_interact_indicator.visible = true
 
 
-func _hide_ghost_and_indicator() -> void:
-	_interact_indicator.visible = false
+func _set_ghost_valid(valid: bool) -> void:
+	var mat := _ghost_mat_valid if valid else _ghost_mat_invalid
+	for child in _ghost_node.get_children():
+		if child is MeshInstance3D:
+			child.material_override = mat
+
+
+func _hide_ghost() -> void:
 	if _ghost_node != null:
-		_ghost_node.visible = false
+		_ghost_node.queue_free()
+		_ghost_node = null
 
 
-## Reine Lesbarkeits-Prüfung (keine Buchung), ob das getragene Bauteil hier
-## platziert werden könnte — spiegelt die Validierung in GameState.place_building.
-func _can_drop_at_coord(coord: Vector2i) -> bool:
-	var tile : Tile = GameState.tiles.get(coord)
-	if tile == null or tile.is_water() or tile.has_building():
-		return false
-	if not _carried_def.valid_terrain.is_empty() and not _carried_def.valid_terrain.has(tile.terrain):
-		return false
-	return GameState.can_afford(_carried_def.build_cost)
+func _hide_ghost_and_indicator() -> void:
+	_hide_ghost()
+	_interact_indicator.visible = false
 
 
-## Reine Lesbarkeits-Prüfung (keine Buchung) für Siedlungs-Drops.
-func _can_drop_at_vertex(vertex: Vector3i) -> bool:
-	if GameState.settlements.has(vertex):
-		return false
-	return GameState.can_afford(_carried_def.build_cost)
+func _xform(world_pos: Vector3) -> Transform3D:
+	return Transform3D(Basis.IDENTITY, world_pos)
 
 
-# --- Kamera --------------------------------------------------------------------
+# --- Carry-Visual am Spieler ---------------------------------------------------
+
+func _attach_carry_visual(kind: int) -> void:
+	_detach_carry_visual()
+	var visual := Node3D.new()
+	visual.name = "CarryVisual"
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.25, 0.25, 0.25)
+	mesh.mesh = box
+	mesh.material_override = _mat(GameState.current_player().color)
+	visual.add_child(mesh)
+	var label := Label3D.new()
+	label.text = KIND_NAMES.get(kind, "?")
+	label.font_size = 36
+	label.pixel_size = 0.0035
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.position = Vector3(0.0, 0.3, 0.0)
+	visual.add_child(label)
+	var lc := _local_character()
+	if lc != null:
+		lc.carry_slot.add_child(visual)
+
+
+func _detach_carry_visual() -> void:
+	var lc := _local_character()
+	if lc == null:
+		return
+	for child in lc.carry_slot.get_children():
+		child.queue_free()
+
+
+# --- Event-Handler -------------------------------------------------------------
+
+func _on_settlement_placed(vertex: Vector3i, owner_id: int) -> void:
+	_render_settlement(vertex, owner_id, 1)
+
+
+func _on_city_upgraded(vertex: Vector3i, owner_id: int) -> void:
+	_render_settlement(vertex, owner_id, 2)
+
+
+func _on_road_placed(edge, owner_id: int) -> void:
+	var road := _make_road(_player_color(owner_id))
+	road.global_transform = _edge_xform(edge)
+	_roads_node.add_child(road)
+
+
+func _on_robber_moved(tile: Vector2i) -> void:
+	if _robber_pawn != null:
+		_robber_pawn.global_position = hex_map.hex_to_world(tile) + Vector3(0.0, 0.3, 0.0)
+
+
+func _render_settlement(vertex: Vector3i, owner_id: int, level: int) -> void:
+	if _settlement_nodes.has(vertex):
+		_settlement_nodes[vertex].queue_free()
+	var node := _make_city(_player_color(owner_id)) if level == 2 else _make_settlement(_player_color(owner_id))
+	node.position = _vertex_world(vertex)
+	node.set_meta(&"vertex", vertex)
+	_buildings_node.add_child(node)
+	_settlement_nodes[vertex] = node
+
+
+func _player_color(owner_id: int) -> Color:
+	if owner_id >= 0 and owner_id < GameState.players.size():
+		return GameState.players[owner_id].color
+	return Color.WHITE
+
+
+# --- Kamera / Bounds / Tisch ---------------------------------------------------
 
 func _update_camera() -> void:
-	# Blickachse (Kamera schaut entlang -Z, +Z zeigt nach hinten).
 	var back := camera.global_transform.basis.z
-	if _cam_mode == CamMode.FOLLOW:
+	var lc := _local_character()
+	if _cam_mode == CamMode.FOLLOW and lc != null:
 		camera.size = FOLLOW_SIZE
-		camera.global_position = player.global_position + back * FOLLOW_BACK
+		camera.global_position = lc.global_position + back * FOLLOW_BACK
 	else:
 		camera.size = _overview_size
 		camera.global_position = _overview_center + back * (_overview_size * 1.5)
@@ -260,11 +433,6 @@ func _compute_bounds() -> void:
 	_overview_size = maxf(span.x, span.z) + 6.0
 
 
-## Baut einen "echten" Tisch: dicke Holzplatte mit Maserungs-Textur und vier
-## Beinen, großzügig groß (aber endlich) rund um die Hex-Fläche, plus eine
-## unsichtbare Begrenzung an dessen Rand. Die Stufe zur Hex-Plattform ergibt
-## sich aus der vorhandenen Hex-Dicke; hochkommen lässt sich der Character
-## über die step_height-Logik in player.gd.
 func _build_table() -> void:
 	if GameState.tiles.is_empty():
 		return
@@ -276,13 +444,10 @@ func _build_table() -> void:
 	_build_perimeter(mn, mx)
 
 
-## y-Position der begehbaren Tischoberfläche: knapp unter der Hex-Unterkante
-## (HexBoard3D.HEIGHT), mit kleinem Sicherheitsabstand gegen Z-Fighting.
 func _table_top_y() -> float:
 	return -(HexBoard3D.HEIGHT + 0.02)
 
 
-## Sichtbare, begehbare Holzplatte mit echter Dicke (man sieht die Kante).
 func _build_table_surface(mn: Vector3, mx: Vector3) -> void:
 	var mid := (mn + mx) * 0.5
 	var size := Vector3(mx.x - mn.x, TABLE_THICKNESS, mx.z - mn.z)
@@ -307,8 +472,6 @@ func _build_table_surface(mn: Vector3, mx: Vector3) -> void:
 	_walls_node.add_child(body)
 
 
-## Vier Tischbeine an den Ecken (rein dekorativ, ohne Kollision), damit die
-## Platte auch wirklich wie ein Tisch und nicht wie ein schwebender Boden wirkt.
 func _build_table_legs(mn: Vector3, mx: Vector3) -> void:
 	var top_y := _table_top_y() - TABLE_THICKNESS
 	var leg_mat := _mat(TABLE_COLOR.darkened(0.3))
@@ -328,8 +491,6 @@ func _build_table_legs(mn: Vector3, mx: Vector3) -> void:
 		_walls_node.add_child(mesh)
 
 
-## Holzmaserungs-Material: prozedural erzeugte Planken-Textur (keine externen
-## Asset-Dateien nötig), gekachelt über die ganze Tischplatte.
 func _wood_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color.WHITE
@@ -355,7 +516,6 @@ func _make_wood_texture() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-## Unsichtbare Mauer rund um den Tischrand, damit der Character nicht herunterläuft.
 func _build_perimeter(mn: Vector3, mx: Vector3) -> void:
 	var mid := (mn + mx) * 0.5
 	var sx := mx.x - mn.x
@@ -380,50 +540,114 @@ func _build_perimeter(mn: Vector3, mx: Vector3) -> void:
 		_walls_node.add_child(body)
 
 
-func _place_player_start() -> void:
+# --- Begehbare Figuren (eine pro Spieler) --------------------------------------
+
+## Welchen Slot steuert dieser Client lokal? Online: eigener Roster-Slot.
+## Offline (Hotseat): der aktuell am Zug befindliche Spieler.
+func _controlled_slot() -> int:
+	return Net.local_slot if Net.is_online() else GameState.current_player_index
+
+
+## Die lokal gesteuerte Figur (oder null, falls noch nicht gespawnt).
+func _local_character() -> CharacterBody3D:
+	return _characters.get(_controlled_slot())
+
+
+## Spawnt eine Figur pro Spieler — auf jedem Peer identisch (gleiche Namen/Reihen-
+## folge), damit die MultiplayerSynchronizer-Pfade übereinstimmen.
+func _spawn_characters() -> void:
 	if GameState.tiles.is_empty():
 		return
-	player.global_position = _overview_center + Vector3(0.0, 2.0, 0.0)
-	player.velocity = Vector3.ZERO
+	var n := GameState.players.size()
+	for slot in n:
+		var ch: CharacterBody3D = PLAYER_SCENE.instantiate()
+		ch.name = "Player_%d" % slot
+		ch.slot = slot
+		_characters_node.add_child(ch)
+		var ang := TAU * float(slot) / float(maxi(n, 1))
+		var offset := Vector3(cos(ang), 0.0, sin(ang)) * 2.0
+		ch.global_position = _overview_center + Vector3(0.0, 2.0, 0.0) + offset
+		ch.velocity = Vector3.ZERO
+		_tint_character(ch, _player_color(slot))
+		if Net.is_online():
+			ch.set_multiplayer_authority(Net.peer_of_slot(slot))
+			_add_character_sync(ch)
+		_characters[slot] = ch
 
 
-## Baut das feste Depot: eine Reihe (größerer) Pickup-Punkte, einer pro
-## Bautyp, auf der Tischfläche neben der erhöhten Hex-Plattform.
+## Färbt die Platzhalter-Kapsel in der Spielerfarbe ein.
+func _tint_character(ch: Node, color: Color) -> void:
+	var placeholder := ch.get_node_or_null("Model/Placeholder")
+	if placeholder is MeshInstance3D:
+		placeholder.material_override = _mat(color)
+
+
+## Aktualisiert die Multiplayer-Autorität der Figuren anhand des aktuellen Rosters
+## (z.B. nach Reconnect, wenn ein Slot eine neue peer_id bekommt).
+func _refresh_character_authorities() -> void:
+	if not Net.is_online():
+		return
+	for slot in _characters:
+		var peer := Net.peer_of_slot(slot)
+		if peer == -1:
+			continue
+		var ch: Node = _characters[slot]
+		ch.set_multiplayer_authority(peer)
+		for c in ch.get_children():
+			if c is MultiplayerSynchronizer:
+				c.set_multiplayer_authority(peer)
+
+
+## Hängt einen MultiplayerSynchronizer an (Position + Rotation), Autorität = Besitzer.
+func _add_character_sync(ch: Node) -> void:
+	var cfg := SceneReplicationConfig.new()
+	for prop in [NodePath(".:position"), NodePath(".:rotation")]:
+		cfg.add_property(prop)
+		cfg.property_set_replication_mode(prop, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
+	var sync := MultiplayerSynchronizer.new()
+	sync.replication_config = cfg
+	sync.set_multiplayer_authority(ch.get_multiplayer_authority())
+	ch.add_child(sync)
+
+
+# --- Depot (Bau-Palette) -------------------------------------------------------
+
 func _build_depot() -> void:
 	if GameState.tiles.is_empty():
 		return
-	var defs := ContentDB.all_buildings()
-	var start_x := _overview_center.x - (defs.size() - 1) * DEPOT_SPACING * 0.5
+	var start_x := _overview_center.x - (DEPOT_KINDS.size() - 1) * DEPOT_SPACING * 0.5
 	var z := _bounds_max.z + HEX_EDGE_PAD + 1.0
-	for i in defs.size():
-		var def : BuildingDef = defs[i]
-		var point := _make_depot_point(def)
+	for i in DEPOT_KINDS.size():
+		var kind: int = DEPOT_KINDS[i]
+		var point := _make_depot_point(kind)
 		point.position = Vector3(start_x + i * DEPOT_SPACING, _table_top_y(), z)
-		point.set_meta(&"depot_def", def)
+		point.set_meta(&"build_kind", kind)
 		_depot_node.add_child(point)
 
 
-const DEPOT_BASE_COLOR := Color(0.85, 0.7, 0.25)
-
-
-## Pickup-Platzhalter im Depot: Sockel + erkennbares Mini-Modell des Bautyps
-## + großes, schwebendes Namens-Label.
-func _make_depot_point(def: BuildingDef) -> StaticBody3D:
-	var body := _building_body(Vector3(1.0, 0.35, 1.0))
+func _make_depot_point(kind: int) -> Node3D:
+	var root := Node3D.new()
 	var base := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(1.0, 0.35, 1.0)
 	base.mesh = box
 	base.material_override = _mat(DEPOT_BASE_COLOR)
 	base.position = Vector3(0.0, 0.175, 0.0)
-	body.add_child(base)
+	root.add_child(base)
 
-	var model := _make_depot_model(def.id)
+	var model: Node3D
+	match kind:
+		BuildKind.ROAD:
+			model = _make_road(Color(0.85, 0.85, 0.85))
+		BuildKind.CITY:
+			model = _make_city(Color(0.9, 0.9, 0.9))
+		_:
+			model = _make_settlement(Color(0.9, 0.9, 0.9))
 	model.position = Vector3(0.0, 0.35, 0.0)
-	body.add_child(model)
+	root.add_child(model)
 
 	var label := Label3D.new()
-	label.text = def.display_name
+	label.text = KIND_NAMES.get(kind, "?")
 	label.font_size = 110
 	label.pixel_size = 0.008
 	label.outline_size = 18
@@ -431,120 +655,40 @@ func _make_depot_point(def: BuildingDef) -> StaticBody3D:
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.position = Vector3(0.0, 1.5, 0.0)
-	body.add_child(label)
-	return body
-
-
-## Erkennbares Mini-Modell pro Bautyp (Platzhalter-Primitiven, kein Asset
-## nötig), damit man im Depot sofort sieht, welches Gebäude man aufhebt.
-func _make_depot_model(id: StringName) -> Node3D:
-	match id:
-		&"settlement":
-			return _without_collision(_make_settlement())
-		&"extractor":
-			return _make_depot_pick()
-		&"sawmill":
-			return _make_depot_saw()
-		&"smithy":
-			return _make_depot_anvil()
-		_:
-			return _without_collision(_make_tile_building())
-
-
-## Entfernt die Kollisionsform eines per _make_tile_building()/_make_settlement()
-## erzeugten Körpers — als rein dekoratives Depot-Modell braucht es keine.
-func _without_collision(body: StaticBody3D) -> StaticBody3D:
-	body.get_child(0).queue_free()
-	return body
-
-
-## Spitzhacke (Extraktor): zwei gekreuzte Balken auf einem kurzen Stiel.
-func _make_depot_pick() -> Node3D:
-	var root := Node3D.new()
-	var mat := _mat(Color(0.45, 0.45, 0.48))
-	var head := MeshInstance3D.new()
-	var head_box := BoxMesh.new()
-	head_box.size = Vector3(0.85, 0.12, 0.12)
-	head.mesh = head_box
-	head.material_override = mat
-	head.rotation_degrees = Vector3(0.0, 0.0, 25.0)
-	head.position = Vector3(0.0, 0.55, 0.0)
-	root.add_child(head)
-	var handle := MeshInstance3D.new()
-	var handle_box := BoxMesh.new()
-	handle_box.size = Vector3(0.1, 0.6, 0.1)
-	handle.mesh = handle_box
-	handle.material_override = _mat(Color(0.5, 0.35, 0.2))
-	handle.rotation_degrees = Vector3(0.0, 0.0, -20.0)
-	handle.position = Vector3(0.0, 0.25, 0.0)
-	root.add_child(handle)
+	root.add_child(label)
 	return root
 
 
-## Sägeblatt (Sägewerk): stehende Scheibe mit Zähnen auf einem Sockelpfosten.
-func _make_depot_saw() -> Node3D:
+# --- Räuber --------------------------------------------------------------------
+
+func _build_robber() -> void:
+	_robber_pawn = _make_robber()
+	_robber_pawn.global_transform = _xform(hex_map.hex_to_world(GameState.robber_tile) + Vector3(0.0, 0.3, 0.0))
+	_buildings_node.add_child(_robber_pawn)
+
+
+func _make_robber() -> Node3D:
 	var root := Node3D.new()
-	var post := MeshInstance3D.new()
-	var post_cyl := CylinderMesh.new()
-	post_cyl.top_radius = 0.06
-	post_cyl.bottom_radius = 0.06
-	post_cyl.height = 0.3
-	post.mesh = post_cyl
-	post.material_override = _mat(Color(0.5, 0.35, 0.2))
-	post.position = Vector3(0.0, 0.15, 0.0)
-	root.add_child(post)
-	var blade := MeshInstance3D.new()
-	var blade_cyl := CylinderMesh.new()
-	blade_cyl.top_radius = 0.45
-	blade_cyl.bottom_radius = 0.45
-	blade_cyl.height = 0.08
-	blade_cyl.radial_segments = 12
-	blade.mesh = blade_cyl
-	blade.material_override = _mat(Color(0.75, 0.76, 0.78))
-	blade.rotation_degrees = Vector3(0.0, 0.0, 90.0)
-	blade.position = Vector3(0.0, 0.55, 0.0)
-	root.add_child(blade)
+	var mesh := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.22
+	cone.height = 0.6
+	mesh.mesh = cone
+	mesh.material_override = _mat(Color(0.12, 0.12, 0.14))
+	mesh.position = Vector3(0.0, 0.3, 0.0)
+	root.add_child(mesh)
 	return root
 
 
-## Amboss (Schmiede): breite Arbeitsfläche, Taille und Fuß.
-func _make_depot_anvil() -> Node3D:
-	var root := Node3D.new()
-	var mat := _mat(Color(0.2, 0.2, 0.22))
-	var top := MeshInstance3D.new()
-	var top_box := BoxMesh.new()
-	top_box.size = Vector3(0.7, 0.18, 0.32)
-	top.mesh = top_box
-	top.material_override = mat
-	top.position = Vector3(0.0, 0.65, 0.0)
-	root.add_child(top)
-	var waist := MeshInstance3D.new()
-	var waist_box := BoxMesh.new()
-	waist_box.size = Vector3(0.3, 0.22, 0.26)
-	waist.mesh = waist_box
-	waist.material_override = mat
-	waist.position = Vector3(0.0, 0.45, 0.0)
-	root.add_child(waist)
-	var foot := MeshInstance3D.new()
-	var foot_box := BoxMesh.new()
-	foot_box.size = Vector3(0.5, 0.18, 0.4)
-	foot.mesh = foot_box
-	foot.material_override = mat
-	foot.position = Vector3(0.0, 0.25, 0.0)
-	root.add_child(foot)
-	return root
-
-
-# --- Marker / Tokens -----------------------------------------------------------
+# --- Marker / Meshes -----------------------------------------------------------
 
 func _add_token(coord: Vector2i, value: int) -> void:
 	var label := Label3D.new()
 	label.text = str(value)
 	label.font_size = 96
 	label.pixel_size = 0.008
-	label.modulate = Color.BLACK
-	# Flach auf die Tile-Oberfläche legen (Text zeigt nach oben), leicht angehoben
-	# gegen Z-Fighting mit der Hex-Oberseite.
+	label.modulate = Color.BLACK if value != 6 and value != 8 else Color(0.7, 0.1, 0.1)
 	label.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	label.position = hex_map.hex_to_world(coord) + Vector3(0.0, 0.03, 0.0)
 	_tokens.add_child(label)
@@ -556,8 +700,6 @@ func _mat(color: Color) -> StandardMaterial3D:
 	return m
 
 
-## StaticBody mit zentrierter Box-Kollision (auf dem Boden stehend).
-## Visuelle Meshes werden anschließend angehängt.
 func _building_body(footprint: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var col := CollisionShape3D.new()
@@ -569,30 +711,6 @@ func _building_body(footprint: Vector3) -> StaticBody3D:
 	return body
 
 
-## Fabrik/Extraktor (TILE): flacher Quader mit kleinem Schornstein.
-func _make_tile_building() -> StaticBody3D:
-	var body := _building_body(Vector3(0.5, 0.4, 0.5))
-	var base := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(0.5, 0.4, 0.5)
-	base.mesh = box
-	base.material_override = _mat(Color(0.55, 0.57, 0.62))
-	base.position = Vector3(0.0, 0.2, 0.0)
-	body.add_child(base)
-	var chimney := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.06
-	cyl.bottom_radius = 0.06
-	cyl.height = 0.35
-	chimney.mesh = cyl
-	chimney.material_override = _mat(Color(0.3, 0.3, 0.33))
-	chimney.position = Vector3(0.14, 0.55, 0.14)
-	body.add_child(chimney)
-	return body
-
-
-## Transparentes Material für die Ghost-Vorschau (ohne Schatten/Beleuchtung,
-## damit Grün/Rot klar erkennbar bleibt).
 func _ghost_mat(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
@@ -601,38 +719,16 @@ func _ghost_mat(color: Color) -> StandardMaterial3D:
 	return m
 
 
-## Baut die halbtransparente Bauvorschau passend zur Platzierungsart des
-## Bautyps (gleiche Silhouette wie das fertige Gebäude, ohne Kollision).
-func _make_ghost(def: BuildingDef) -> Node3D:
-	var ghost : Node3D
-	if def.placement == BuildingDef.Placement.TILE:
-		ghost = _make_tile_building()
-	else:
-		ghost = _make_settlement()
-	(ghost as StaticBody3D).get_child(0).queue_free()   # Kollisionsform: Ghost soll nicht blockieren
-	for child in ghost.get_children():
-		if child is MeshInstance3D:
-			child.material_override = _ghost_mat_valid
-	return ghost
-
-
-func _set_ghost_valid(valid: bool) -> void:
-	var mat := _ghost_mat_valid if valid else _ghost_mat_invalid
-	for child in _ghost_node.get_children():
-		if child is MeshInstance3D:
-			child.material_override = mat
-
-
-## Siedlung (VERTEX): kleines Haus mit Spitzdach.
-func _make_settlement() -> StaticBody3D:
-	var body := _building_body(Vector3(0.3, 0.28, 0.3))
+## Siedlung (VERTEX): kleines Haus mit Spitzdach, eingefärbt nach Besitzer.
+func _make_settlement(color: Color) -> Node3D:
+	var root := Node3D.new()
 	var walls := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(0.3, 0.28, 0.3)
 	walls.mesh = box
-	walls.material_override = _mat(Color(0.92, 0.89, 0.78))
+	walls.material_override = _mat(color)
 	walls.position = Vector3(0.0, 0.14, 0.0)
-	body.add_child(walls)
+	root.add_child(walls)
 	var roof := MeshInstance3D.new()
 	var pyramid := CylinderMesh.new()
 	pyramid.top_radius = 0.0
@@ -640,207 +736,64 @@ func _make_settlement() -> StaticBody3D:
 	pyramid.height = 0.22
 	pyramid.radial_segments = 4
 	roof.mesh = pyramid
-	roof.material_override = _mat(Color(0.7, 0.25, 0.18))
-	roof.rotation_degrees = Vector3(0.0, 45.0, 0.0)   # Dachkanten parallel zu den Wänden
+	roof.material_override = _mat(color.darkened(0.35))
+	roof.rotation_degrees = Vector3(0.0, 45.0, 0.0)
 	roof.position = Vector3(0.0, 0.39, 0.0)
-	body.add_child(roof)
-	return body
+	root.add_child(roof)
+	return root
 
 
-# --- Event-Handler -------------------------------------------------------------
-
-func _on_building_placed(coord: Vector2i, def: BuildingDef) -> void:
-	var b := _make_tile_building()
-	b.position = hex_map.hex_to_world(coord)
-	b.set_meta(&"coord", coord)
-	_buildings_node.add_child(b)
-	if def.recipe != null:
-		var label := _make_holo_label()
-		b.add_child(label)
-		_holo_labels[coord] = label
-		_update_holo_label(coord)
-
-
-func _on_settlement_placed(vertex: Vector3i, _def: BuildingDef) -> void:
-	var b := _make_settlement()
-	b.position = _vertex_world(vertex)
-	b.set_meta(&"vertex", vertex)
-	_buildings_node.add_child(b)
-	var label := _make_settlement_holo_label()
-	b.add_child(label)
-	_settlement_holo_labels[vertex] = label
-	_update_settlement_holo_label(vertex)
+## Stadt (VERTEX): größerer Doppelblock, eingefärbt nach Besitzer.
+func _make_city(color: Color) -> Node3D:
+	var root := Node3D.new()
+	var main := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.42, 0.4, 0.42)
+	main.mesh = box
+	main.material_override = _mat(color)
+	main.position = Vector3(0.0, 0.2, 0.0)
+	root.add_child(main)
+	var tower := MeshInstance3D.new()
+	var tbox := BoxMesh.new()
+	tbox.size = Vector3(0.22, 0.34, 0.22)
+	tower.mesh = tbox
+	tower.material_override = _mat(color.lightened(0.15))
+	tower.position = Vector3(0.14, 0.55, 0.14)
+	root.add_child(tower)
+	return root
 
 
-func _on_turn_advanced(_turn: int) -> void:
-	for coord in _holo_labels:
-		_update_holo_label(coord)
-	for vertex in _settlement_holo_labels:
-		_update_settlement_holo_label(vertex)
-
-
-func _on_building_updated(coord: Vector2i) -> void:
-	_update_holo_label(coord)
-
-
-## Erzeugt ein schwebendes, immer zur Kamera ausgerichtetes Label ("Holo-Display").
-func _make_holo_label() -> Label3D:
-	var label := Label3D.new()
-	label.font_size = 48
-	label.pixel_size = 0.004
-	label.modulate = Color(0.4, 0.95, 1.0)
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
-	label.position = Vector3(0.0, 0.9, 0.0)
-	return label
-
-
-## Aktualisiert den Holo-Text eines Gebäudes mit Input -> Output und Fortschritt.
-func _update_holo_label(coord: Vector2i) -> void:
-	var label : Label3D = _holo_labels.get(coord)
-	var tile : Tile = GameState.tiles.get(coord)
-	if label == null or tile == null or tile.building == null or tile.building.def.recipe == null:
-		return
-	var recipe : Recipe = tile.building.def.recipe
-	label.text = "%s → %s  (%d/%d)" % [
-		_format_goods(recipe.inputs),
-		_format_goods(recipe.outputs),
-		tile.building.recipe_progress,
-		recipe.turns_per_cycle,
-	]
-	label.modulate = Color(0.4, 0.95, 1.0) if tile.building.produce_this_round else Color(0.5, 0.5, 0.5, 0.6)
-
-
-## Erzeugt das schwebende Countdown-Label über einer Siedlung (Tier 2+ Nachschub).
-func _make_settlement_holo_label() -> Label3D:
-	var label := Label3D.new()
-	label.font_size = 44
-	label.pixel_size = 0.0035
-	label.modulate = Color(1.0, 0.55, 0.15)
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
-	label.position = Vector3(0.0, 0.7, 0.0)
-	label.visible = false
-	return label
-
-
-## Aktualisiert den Countdown bis zur nächsten periodischen Nachfrage (Holz/Erz ab Tier 2).
-func _update_settlement_holo_label(vertex: Vector3i) -> void:
-	var label : Label3D = _settlement_holo_labels.get(vertex)
-	var settlement : Settlement = GameState.settlements.get(vertex)
-	if label == null or settlement == null:
-		return
-	var periodic := _demand_system.periodic_demand_for_tier(settlement.pop_tier)
-	if periodic.is_empty():
-		label.visible = false
-		return
-	label.visible = true
-	label.text = "%s in %d" % [
-		_format_goods(periodic),
-		maxi(DemandSystem.PERIODIC_PERIOD - settlement.upkeep_timer, 0),
-	]
-
-
-func _format_goods(goods: Dictionary) -> String:
-	var parts : Array[String] = []
-	for id in goods:
-		var res_name : String = Terrain.RESOURCE_NAMES.get(id, str(id))
-		parts.append("%d %s" % [int(goods[id]), res_name])
-	return ", ".join(parts) if not parts.is_empty() else "–"
-
-
-# --- Eingabe -------------------------------------------------------------------
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("toggle_camera"):
-		_cam_mode = CamMode.OVERVIEW if _cam_mode == CamMode.FOLLOW else CamMode.FOLLOW
-		return
-
-	if GameState.is_input_blocked():
-		return   # Planungs-/KI-Zug-Overlay offen: keine Bau-/Interaktions-Eingaben
-
-	if _carried_def == null:
-		if event.is_action_pressed("interact"):
-			if _interact_target.has("depot_def"):
-				_pick_up(_interact_target["depot_def"])
-			elif _interact_target.has("coord"):
-				EventBus.building_selected.emit(_interact_target["coord"])
-			elif _interact_target.has("vertex"):
-				EventBus.settlement_selected.emit(_interact_target["vertex"])
-		return
-
-	if event.is_action_pressed("ui_cancel"):
-		_cancel_carry()
-		return
-
-	if event.is_action_pressed("interact"):
-		if _interact_target.has("coord"):
-			if GameState.place_building(_interact_target["coord"], _carried_def):
-				_finish_carry()
-		elif _interact_target.has("vertex"):
-			if GameState.place_settlement(_interact_target["vertex"], _carried_def):
-				_finish_carry()
-
-
-## Nimmt ein Bauteil vom Depot auf und macht es sichtbar getragen.
-func _pick_up(def: BuildingDef) -> void:
-	_carried_def = def
-	EventBus.carried_building_changed.emit(_carried_def)
-	_attach_carry_visual(def)
-
-
-## Bricht das Tragen ab und legt das Bauteil zurück ins Depot (kostenlos, da nie abgebucht).
-func _cancel_carry() -> void:
-	_carried_def = null
-	EventBus.carried_building_changed.emit(null)
-	_detach_carry_visual()
-	_remove_ghost()
-
-
-## Bauteil wurde erfolgreich platziert (Kosten bereits in place_building/place_settlement abgezogen).
-func _finish_carry() -> void:
-	_carried_def = null
-	EventBus.carried_building_changed.emit(null)
-	_detach_carry_visual()
-	_remove_ghost()
-
-
-func _remove_ghost() -> void:
-	if _ghost_node != null:
-		_ghost_node.queue_free()
-		_ghost_node = null
-	_interact_indicator.visible = false
-
-
-## Hängt ein simples Platzhalter-Visual des getragenen Bauteils an den
-## Carry-Slot des Spielermodells.
-func _attach_carry_visual(def: BuildingDef) -> void:
-	_detach_carry_visual()
-	var visual := Node3D.new()
-	visual.name = "CarryVisual"
+## Straße (EDGE): liegender Balken, eingefärbt nach Besitzer. Wird per
+## _edge_xform entlang der Kante ausgerichtet.
+func _make_road(color: Color) -> Node3D:
+	var root := Node3D.new()
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = Vector3(0.25, 0.25, 0.25)
+	box.size = Vector3(0.12, 0.1, 0.9)   # lang entlang lokaler -Z (Blickrichtung)
 	mesh.mesh = box
-	mesh.material_override = _mat(Color(0.85, 0.7, 0.25))
-	visual.add_child(mesh)
-	var label := Label3D.new()
-	label.text = def.display_name
-	label.font_size = 36
-	label.pixel_size = 0.0035
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
-	label.position = Vector3(0.0, 0.3, 0.0)
-	visual.add_child(label)
-	player.carry_slot.add_child(visual)
+	mesh.material_override = _mat(color)
+	mesh.position = Vector3(0.0, 0.05, 0.0)
+	root.add_child(mesh)
+	return root
 
 
-func _detach_carry_visual() -> void:
-	for child in player.carry_slot.get_children():
-		child.queue_free()
+func _make_ghost_settlement() -> Node3D:
+	return _make_settlement(Color.WHITE)
 
 
-# --- Vertex-Geometrie ----------------------------------------------------------
+func _make_ghost_city() -> Node3D:
+	return _make_city(Color.WHITE)
+
+
+func _make_ghost_road() -> Node3D:
+	return _make_road(Color.WHITE)
+
+
+func _make_ghost_robber() -> Node3D:
+	return _make_robber()
+
+
+# --- Vertex-/Kanten-Geometrie --------------------------------------------------
 
 func _vertex_world(vertex: Vector3i) -> Vector3:
 	var sum := Vector3.ZERO
@@ -861,3 +814,34 @@ func _nearest_vertex(world: Vector3) -> Vector3i:
 			best_d = d
 			best = ver_coord
 	return best
+
+
+## Nächste Kante zur Position: inzidente Kanten der nächsten Ecke, beste nach
+## Abstand des Welt-Mittelpunkts.
+func _nearest_edge(world: Vector3) -> Array:
+	var v0 := _nearest_vertex(world)
+	var best = null
+	var best_d := INF
+	for edge in _hex.incident_edges(v0):
+		var d := _edge_midpoint(edge).distance_squared_to(world)
+		if d < best_d:
+			best_d = d
+			best = edge
+	if best == null:
+		return _hex.make_edge(v0, v0)
+	return best
+
+
+func _edge_midpoint(edge) -> Vector3:
+	return (_vertex_world(edge[0]) + _vertex_world(edge[1])) * 0.5
+
+
+## Transform einer Straße/Ghost entlang der Kante (lokale -Z zeigt zum 2. Endpunkt).
+func _edge_xform(edge) -> Transform3D:
+	var a := _vertex_world(edge[0])
+	var b := _vertex_world(edge[1])
+	var mid := (a + b) * 0.5
+	var t := Transform3D(Basis.IDENTITY, mid)
+	if a.distance_to(b) > 0.001:
+		t = t.looking_at(b, Vector3.UP)
+	return t

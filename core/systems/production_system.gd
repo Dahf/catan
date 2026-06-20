@@ -1,53 +1,45 @@
 class_name ProductionSystem
 extends RefCounted
-## Verarbeitet Rohstoff-Gewinnung (durch Würfel) und Fabrik-Produktion.
-## Reine Logik über GameState — keine Node-Abhängigkeit.
+## Rohstoff-Gewinnung in Catan: bei einem Würfelwurf bekommt jeder Spieler für
+## seine Siedlungen/Städte an passenden Tiles Ressourcen. Reine Logik über GameState.
 
-## Wird aufgerufen, wenn gewürfelt wurde: aktiviert passende Tiles.
-func on_dice_rolled(value: int) -> void:
-	collect_resources(value)
+var hex := HexGrid.new()
 
 
-## Sammelt Rohstoffe aller Tiles mit passendem Zahlen-Token ins Lager.
+## Verteilt Ressourcen nach einem Würfelwurf: jedes Tile mit passendem Token
+## (und ohne Räuber) gibt jeder angrenzenden Siedlung (1) bzw. Stadt (2) Ertrag.
 func collect_resources(value: int) -> void:
 	for coord in GameState.tiles:
-		var tile : Tile = GameState.tiles[coord]
+		var tile: Tile = GameState.tiles[coord]
 		if tile.number_token != value:
 			continue
-		var type : StringName = Terrain.TERRAIN_RESOURCES.get(tile.terrain, &"")
-		if type == &"":
+		if coord == GameState.robber_tile:
+			continue   # Räuber blockiert die Produktion dieses Tiles
+		var res: StringName = Terrain.TERRAIN_RESOURCES.get(tile.terrain, &"")
+		if res == &"":
 			continue
-			#TODO buildings
-		GameState.add_resource(type, 1)
-
-
-## Lässt alle Fabriken/Verarbeiter ihre Rezepte ausführen (Input -> Output).
-## Bei knappen Inputs entscheidet die Gebäude-Priorität, wer zuerst bedient wird:
-## die Liste wird absteigend sortiert, danach verändert spend() das gemeinsame
-## Lager sofort, sodass niedriger priorisierte Gebäude den reduzierten Bestand
-## sehen statt zufällig nach Dictionary-Reihenfolge zu konkurrieren.
-func run_factories() -> void:
-	var producers : Array[BuildingInstance] = []
-	for coord in GameState.tiles:
-		var tile : Tile = GameState.tiles[coord]
-		var building : BuildingInstance = tile.building
-		if building == null or not building.active or not building.produce_this_round \
-				or building.def == null or building.def.recipe == null:
-			continue
-		producers.append(building)
-	producers.sort_custom(func(a, b): return a.priority > b.priority)
-
-	for building : BuildingInstance in producers:
-		var recipe : Recipe = building.def.recipe
-		if building.recipe_progress == 0:
-			if not GameState.can_afford(recipe.inputs):
+		for vertex in hex.get_vertices(coord):
+			var s: Settlement = GameState.settlements.get(vertex)
+			if s == null:
 				continue
-			GameState.spend(recipe.inputs)
-			building.recipe_progress = 1
-		else:
-			building.recipe_progress += 1
+			var amount := 2 if s.level == 2 else 1
+			var player: Player = GameState.players[s.owner_id]
+			GameState.add_resource_to(player, res, _apply_relic_multipliers(player, res, amount))
 
-		if building.recipe_progress >= recipe.turns_per_cycle:
-			for resource in recipe.outputs:
-				GameState.add_resource(resource, recipe.outputs[resource])
-			building.recipe_progress = 0
+
+## Vergibt die Startressourcen für die zweite Setup-Siedlung: je angrenzendem
+## produzierenden Tile 1 Ressource.
+func grant_initial_resources(vertex: Vector3i, player: Player) -> void:
+	for coord in hex.vertex_adjacent_tiles(vertex):
+		var tile: Tile = GameState.tiles.get(coord)
+		if tile == null:
+			continue
+		var res: StringName = Terrain.TERRAIN_RESOURCES.get(tile.terrain, &"")
+		if res != &"":
+			GameState.add_resource_to(player, res, 1)
+
+
+## Einziger Chokepoint für spätere Roguelike-Multiplier/Power-Ups (Relics).
+## Gibt vorerst die Menge unverändert zurück.
+func _apply_relic_multipliers(_player: Player, _res: StringName, amount: int) -> int:
+	return amount

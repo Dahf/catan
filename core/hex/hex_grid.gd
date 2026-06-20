@@ -95,7 +95,15 @@ func get_edges(coord: Vector2i) -> Array:
 	var verts := get_vertices(coord)
 	var result: Array = []
 	for i in range(6):
-		result.append(_make_edge(verts[i], verts[(i + 1) % 6]))
+		result.append(make_edge(verts[i], verts[(i + 1) % 6]))
+	return result
+
+
+## Die (bis zu 3) Kanten, die an einer Ecke/Vertex hängen (zu ihren Nachbar-Ecken).
+func incident_edges(vertex: Vector3i) -> Array:
+	var result: Array = []
+	for v in adjacent_vertices(vertex):
+		result.append(make_edge(vertex, v))
 	return result
 
 
@@ -168,10 +176,17 @@ func _cube_round(frac: Vector3) -> Vector3i:
 
 ## Erzeugt eine Kante als sortiertes Vertex-Paar (kanonisch, damit dieselbe
 ## Kante von zwei Tiles aus identisch ist).
-func _make_edge(a: Vector3i, b: Vector3i) -> Array:
+func make_edge(a: Vector3i, b: Vector3i) -> Array:
 	if _vertex_less(a, b):
 		return [a, b]
 	return [b, a]
+
+
+## Stabiler String-Schlüssel einer Kante (Dictionaries keyen nicht zuverlässig
+## auf Array[Vector3i]). Kanonisiert vorab über make_edge.
+func edge_key(edge) -> String:
+	var e := make_edge(edge[0], edge[1])
+	return "%s|%s" % [e[0], e[1]]
 
 
 ## Lexikografischer Vergleich zweier Vertex-Koordinaten.

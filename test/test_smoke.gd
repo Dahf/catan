@@ -4,4 +4,4 @@ extends GutTest
 
 
 func test_truth() -> void:
-	assert_eq(1 + 2, 2, "Mathematik funktioniert")
+	assert_eq(1 + 2, 3, "Mathematik funktioniert")

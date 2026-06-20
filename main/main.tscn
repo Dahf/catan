@@ -1,36 +1,29 @@
-[gd_scene format=3 uid="uid://o56xegrxc8fa"]
+[gd_scene load_steps=6 format=3 uid="uid://o56xegrxc8fa"]
 
 [ext_resource type="Script" uid="uid://dk8y2s885x4qq" path="res://main/main.gd" id="1_main"]
 [ext_resource type="PackedScene" uid="uid://nb5n065t3tdg" path="res://presentation/board/game_board.tscn" id="2_board"]
 [ext_resource type="PackedScene" path="res://presentation/ui/hud.tscn" id="3_hud"]
-[ext_resource type="PackedScene" path="res://presentation/ui/building_panel.tscn" id="5_buildingpanel"]
-[ext_resource type="PackedScene" path="res://presentation/ui/round_planning_panel.tscn" id="6_roundplanning"]
 [ext_resource type="PackedScene" path="res://presentation/ui/phase_banner.tscn" id="7_phasebanner"]
-[ext_resource type="PackedScene" path="res://presentation/ui/ai_turn_panel.tscn" id="8_aiturn"]
+[ext_resource type="Script" path="res://presentation/ui/robber_overlay.gd" id="9_robber"]
 
-[node name="Main" type="Node3D" unique_id=962056230]
+[node name="Main" type="Node3D"]
 script = ExtResource("1_main")
 
-[node name="GameBoard" parent="." unique_id=310315076 instance=ExtResource("2_board")]
+[node name="GameBoard" parent="." instance=ExtResource("2_board")]
 
-[node name="UILayer" type="CanvasLayer" parent="." unique_id=337674466]
+[node name="UILayer" type="CanvasLayer" parent="."]
 
-[node name="HUD" parent="UILayer" unique_id=217223849 instance=ExtResource("3_hud")]
+[node name="HUD" parent="UILayer" instance=ExtResource("3_hud")]
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="PhaseBanner" parent="UILayer" unique_id=409718350 instance=ExtResource("7_phasebanner")]
+[node name="PhaseBanner" parent="UILayer" instance=ExtResource("7_phasebanner")]
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="BuildingPanel" parent="UILayer" unique_id=1220258482 instance=ExtResource("5_buildingpanel")]
+[node name="RobberOverlay" type="Control" parent="UILayer"]
+layout_mode = 3
+anchors_preset = 15
 grow_horizontal = 2
 grow_vertical = 2
-
-[node name="RoundPlanningPanel" parent="UILayer" unique_id=948431814 instance=ExtResource("6_roundplanning")]
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="AiTurnPanel" parent="UILayer" unique_id=1847260615 instance=ExtResource("8_aiturn")]
-grow_horizontal = 2
-grow_vertical = 2
+script = ExtResource("9_robber")
